@@ -1,0 +1,73 @@
+@inject WebSerialService Serial
+
+<div class="input-group">
+    <select id="@InputId" class="form-select" value="@(SelectedPort?.Id ?? string.Empty)" @onchange="OnSelectionChangedAsync" disabled="@Disabled">
+        <option value="">@(Serial.Ports.Count == 0 ? "No granted ports" : "Select a port")</option>
+        @foreach (var port in Serial.Ports)
+        {
+            <option value="@port.Id">@port.DisplayName</option>
+        }
+    </select>
+    <button type="button" class="btn btn-outline-primary" @onclick="AddPortAsync" disabled="@Disabled">Add port…</button>
+</div>
+
+@if (error is not null)
+{
+    <div class="text-danger small mt-1">@error</div>
+}
+
+@code {
+    [Parameter]
+    public string? InputId { get; set; }
+
+    [Parameter]
+    public WebSerialPort? SelectedPort { get; set; }
+
+    [Parameter]
+    public EventCallback<WebSerialPort?> SelectedPortChanged { get; set; }
+
+    [Parameter]
+    public bool Disabled { get; set; }
+
+    private string? error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            await Serial.RefreshPortsAsync();
+        }
+        catch (JSException ex)
+        {
+            error = $"Could not list serial ports: {JsErrors.FirstLine(ex)}";
+        }
+
+        if (SelectedPort is null && Serial.Ports.Count == 1)
+        {
+            await SelectedPortChanged.InvokeAsync(Serial.Ports[0]);
+        }
+    }
+
+    private Task OnSelectionChangedAsync(ChangeEventArgs e)
+    {
+        var id = e.Value as string;
+        return SelectedPortChanged.InvokeAsync(Serial.Ports.FirstOrDefault(p => p.Id == id));
+    }
+
+    private async Task AddPortAsync()
+    {
+        error = null;
+        try
+        {
+            var port = await Serial.RequestPortAsync();
+            if (port is not null)
+            {
+                await SelectedPortChanged.InvokeAsync(port);
+            }
+        }
+        catch (JSException ex)
+        {
+            error = $"Could not add a port: {JsErrors.FirstLine(ex)}";
+        }
+    }
+}

@@ -1,0 +1,14 @@
+.scan-results {
+    font-size: 0.875rem;
+}
+
+.scan-results ::deep .hex {
+    font-family: var(--bs-font-monospace);
+    white-space: normal;
+    word-spacing: -0.1em;
+    min-width: 8rem;
+}
+
+.scan-results ::deep .notes {
+    min-width: 14rem;
+}

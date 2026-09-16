@@ -1,0 +1,222 @@
+@page "/scanner"
+@implements IAsyncDisposable
+@inject WebSerialService Serial
+@inject TimeProvider TimeProvider
+@inject BrowserFileDownloader Downloader
+@inject NavigationManager Navigation
+
+<PageTitle>Slave ID Scanner</PageTitle>
+
+<h1>Slave ID Scanner</h1>
+
+<p>Find which slave addresses respond on a Modbus RTU (RS-485) bus whose serial settings are known.</p>
+
+@if (isSupported is null)
+{
+    <p><em>Checking Web Serial support...</em></p>
+}
+else if (isSupported == false)
+{
+    <div class="alert alert-warning" role="alert">
+        The Web Serial API is not available in this browser. Use a desktop Chromium-based browser
+        (Chrome, Edge or Opera) and open the app over HTTPS or on localhost.
+    </div>
+}
+else
+{
+    <ScanConfigForm Model="model" Validation="validation" Disabled="IsRunning"
+                    @bind-SelectedPort="selectedPort" OnChange="Revalidate" />
+
+    <div class="d-flex flex-wrap align-items-center gap-2 my-3">
+        @if (!IsRunning)
+        {
+            <button type="button" class="btn btn-primary" @onclick="StartAsync" disabled="@(!CanStart)">Start scan</button>
+            @if (selectedPort is null)
+            {
+                <span class="text-body-secondary">Select or add a serial port to start.</span>
+            }
+            else if (!validation.IsValid)
+            {
+                <span class="text-danger">Fix the highlighted settings to start.</span>
+            }
+        }
+        else
+        {
+            @if (session!.State == ScanSessionState.Paused)
+            {
+                <button type="button" class="btn btn-success" @onclick="session.Resume" disabled="@session.IsCancellationRequested">Resume</button>
+            }
+            else
+            {
+                <button type="button" class="btn btn-outline-secondary" @onclick="session.Pause" disabled="@session.IsCancellationRequested">Pause</button>
+            }
+
+            <button type="button" class="btn btn-outline-danger" @onclick="session.Cancel" disabled="@session.IsCancellationRequested">Cancel</button>
+            <span class="text-body-secondary small">Pause and cancel take effect after the current transaction.</span>
+        }
+    </div>
+
+    @if (session is not null)
+    {
+        <ScanProgressPanel Session="session" />
+
+        @if (session.Outcome == ScanOutcome.Failed && session.Error is not null)
+        {
+            <div class="alert alert-danger mt-3" role="alert">
+                Scan failed: @JsErrors.FirstLine(session.Error)
+                The port was released; check the connection and try again.
+            </div>
+        }
+
+        @foreach (var hint in session.Results.GetHints())
+        {
+            <div class="alert alert-warning mt-3 mb-0" role="status">@hint.Message</div>
+        }
+
+        <div class="mt-3">
+            <ScanSummary Session="session" />
+        </div>
+
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mt-3 mb-2">
+            <div class="btn-group" role="group" aria-label="Filter results">
+                @foreach (var option in Enum.GetValues<ScanResultFilter>())
+                {
+                    <button type="button" class="btn btn-sm @(filter == option ? "btn-secondary" : "btn-outline-secondary")"
+                            aria-pressed="@(filter == option)" @onclick="() => filter = option">
+                        @option (@session.Results.CountOf(option))
+                    </button>
+                }
+            </div>
+            <div class="d-flex gap-2">
+                <button type="button" class="btn btn-sm btn-outline-primary" @onclick="ExportCsvAsync" disabled="@(IsRunning || session.Results.Count == 0)">Export CSV</button>
+                <button type="button" class="btn btn-sm btn-outline-primary" @onclick="ExportJsonAsync" disabled="@(IsRunning || session.Results.Count == 0)">Export JSON</button>
+            </div>
+        </div>
+
+        @if (exportError is not null)
+        {
+            <div class="alert alert-danger" role="alert">@exportError</div>
+        }
+
+        <ScanResultsTable Results="session.Results.Filter(filter)" OnOpenInCrawler="OpenInCrawler" />
+    }
+}
+
+@code {
+    // How often the page re-renders while a scan runs; results arrive faster than they need to be drawn.
+    private static readonly TimeSpan RefreshInterval = TimeSpan.FromMilliseconds(150);
+
+    private readonly ScanFormModel model = new();
+    private ScanFormValidation validation = default!;
+    private bool? isSupported;
+    private WebSerialPort? selectedPort;
+    private WebSerialPort? scanPort;
+    private ScanSession? session;
+    private Task? runTask;
+    private ScanResultFilter filter = ScanResultFilter.All;
+    private string? exportError;
+
+    private bool IsRunning => session is { State: not ScanSessionState.Finished };
+
+    private bool CanStart => !IsRunning && selectedPort is not null && validation.IsValid;
+
+    protected override void OnInitialized() => Revalidate();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        isSupported = await Serial.IsSupportedAsync();
+        StateHasChanged();
+    }
+
+    private void Revalidate() => validation = model.Validate();
+
+    private async Task StartAsync()
+    {
+        if (!CanStart || validation.Options is not SlaveScanOptions options)
+        {
+            return;
+        }
+
+        exportError = null;
+        filter = ScanResultFilter.All;
+        scanPort = selectedPort!;
+        session = new ScanSession(options, scanPort.DisplayName, TimeProvider);
+        runTask = RunAsync(session, new WebSerialTransport(scanPort, TimeProvider));
+        await runTask;
+    }
+
+    private async Task RunAsync(ScanSession scan, WebSerialTransport transport)
+    {
+        await using (transport)
+        {
+            var run = scan.RunAsync(transport);
+            while (!run.IsCompleted)
+            {
+                await Task.WhenAny(run, Task.Delay(RefreshInterval, TimeProvider));
+                StateHasChanged();
+            }
+
+            await run;
+        }
+    }
+
+    private void OpenInCrawler(SlaveProbeResult result)
+    {
+        if (session is null || scanPort is null)
+        {
+            return;
+        }
+
+        var serial = session.Options.Serial;
+        var query = new Dictionary<string, object?>
+        {
+            ["port"] = scanPort.Id,
+            ["baud"] = serial.BaudRate,
+            ["dataBits"] = serial.DataBits,
+            ["parity"] = serial.ParityCode.ToString(),
+            ["stopBits"] = (int)serial.StopBits,
+            ["id"] = (int)result.SlaveId,
+        };
+        Navigation.NavigateTo(Navigation.GetUriWithQueryParameters(Navigation.ToAbsoluteUri("crawler").ToString(), query));
+    }
+
+    private Task ExportCsvAsync() => ExportAsync("csv", "text/csv", ScanReportExporter.ToCsv);
+
+    private Task ExportJsonAsync() => ExportAsync("json", "application/json", ScanReportExporter.ToJson);
+
+    private async Task ExportAsync(string extension, string contentType, Func<ScanReport, string> format)
+    {
+        if (session is null)
+        {
+            return;
+        }
+
+        exportError = null;
+        var report = session.CreateReport();
+        var timestamp = (report.StartedAt ?? TimeProvider.GetUtcNow()).ToLocalTime();
+        var fileName = $"slave-scan-{timestamp:yyyyMMdd-HHmmss}.{extension}";
+        try
+        {
+            await Downloader.DownloadAsync(fileName, contentType, Encoding.UTF8.GetBytes(format(report)));
+        }
+        catch (JSException ex)
+        {
+            exportError = $"Export failed: {JsErrors.FirstLine(ex)}";
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        // Leaving the page stops the scan; wait for it so the port is released before anything else can reopen it.
+        session?.Cancel();
+        if (runTask is not null)
+        {
+            await runTask;
+        }
+    }
+}

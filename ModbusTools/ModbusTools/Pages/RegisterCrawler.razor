@@ -1,0 +1,48 @@
+@page "/crawler"
+
+<PageTitle>Register Map Crawler</PageTitle>
+
+<h1>Register Map Crawler</h1>
+
+<div class="alert alert-info" role="status">
+    The Register Map Crawler is not implemented yet. This placeholder shows the parameters it received.
+</div>
+
+<dl class="row">
+    <dt class="col-sm-2">Port</dt>
+    <dd class="col-sm-10">@Display(Port)</dd>
+    <dt class="col-sm-2">Baud rate</dt>
+    <dd class="col-sm-10">@Display(Baud)</dd>
+    <dt class="col-sm-2">Data bits</dt>
+    <dd class="col-sm-10">@Display(DataBits)</dd>
+    <dt class="col-sm-2">Parity</dt>
+    <dd class="col-sm-10">@Display(Parity)</dd>
+    <dt class="col-sm-2">Stop bits</dt>
+    <dd class="col-sm-10">@Display(StopBits)</dd>
+    <dt class="col-sm-2">Slave ID</dt>
+    <dd class="col-sm-10">@Display(Id)</dd>
+</dl>
+
+@code {
+    /// <summary>Port identifier as produced by the scanner, e.g. "0403:6001#1".</summary>
+    [SupplyParameterFromQuery]
+    public string? Port { get; set; }
+
+    [SupplyParameterFromQuery]
+    public int? Baud { get; set; }
+
+    [SupplyParameterFromQuery]
+    public int? DataBits { get; set; }
+
+    /// <summary>N, E or O.</summary>
+    [SupplyParameterFromQuery]
+    public string? Parity { get; set; }
+
+    [SupplyParameterFromQuery]
+    public int? StopBits { get; set; }
+
+    [SupplyParameterFromQuery]
+    public int? Id { get; set; }
+
+    private static string Display(object? value) => value?.ToString() ?? "(not provided)";
+}

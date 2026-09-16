@@ -1,0 +1,59 @@
+<div class="card">
+    <div class="card-body">
+        <div class="d-flex flex-wrap justify-content-between gap-2 mb-2">
+            <div>
+                <strong>@StateText</strong>
+                @if (Session.CurrentSlaveId is byte currentId)
+                {
+                    <span class="ms-2">Probing ID <strong>@currentId</strong></span>
+                }
+            </div>
+            <div class="text-body-secondary">Worst case @ScanFormatting.Duration(Session.WorstCase)</div>
+        </div>
+
+        <div class="progress mb-2" role="progressbar" aria-label="Scan progress"
+             aria-valuenow="@progress.Completed" aria-valuemin="0" aria-valuemax="@progress.Total">
+            <div class="progress-bar @(Session.State == ScanSessionState.Running ? "progress-bar-striped progress-bar-animated" : null)"
+                 style="width: @PercentText%"></div>
+        </div>
+
+        <div class="d-flex flex-wrap gap-4">
+            <span>Done <strong>@progress.Completed / @progress.Total</strong></span>
+            <span>Found <strong>@progress.Found</strong></span>
+            <span>Elapsed <strong>@ScanFormatting.Duration(Session.ActiveTime)</strong></span>
+            @if (Session.State != ScanSessionState.Finished)
+            {
+                <span>
+                    ETA <strong>@(progress.EstimatedRemaining is TimeSpan eta ? ScanFormatting.Duration(eta) : "–")</strong>
+                </span>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public ScanSession Session { get; set; } = default!;
+
+    private ScanProgress progress => Session.Progress;
+
+    private string PercentText =>
+        (progress.Total == 0 ? 0 : 100.0 * progress.Completed / progress.Total).ToString("0.#", CultureInfo.InvariantCulture);
+
+    private string StateText => Session.State switch
+    {
+        ScanSessionState.Running when Session.IsCancellationRequested => "Cancelling after the current transaction…",
+        ScanSessionState.Running => "Scanning",
+        ScanSessionState.Paused when Session.IsCancellationRequested => "Cancelling…",
+        ScanSessionState.Paused => "Paused",
+        ScanSessionState.Finished => Session.Outcome switch
+        {
+            ScanOutcome.Completed => "Completed",
+            ScanOutcome.StoppedAtFirstFound => "Stopped at first found device",
+            ScanOutcome.Cancelled => "Cancelled",
+            ScanOutcome.Failed => "Failed",
+            _ => "Finished",
+        },
+        _ => "Starting",
+    };
+}

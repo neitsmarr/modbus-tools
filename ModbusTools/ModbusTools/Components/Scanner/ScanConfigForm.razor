@@ -1,0 +1,250 @@
+<fieldset disabled="@Disabled">
+    <div class="row g-3">
+        <div class="col-lg-6">
+            <div class="card h-100">
+                <div class="card-header">Port &amp; serial settings</div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label class="form-label" for="scan-port">Port</label>
+                        <SerialPortSelector InputId="scan-port" SelectedPort="SelectedPort" SelectedPortChanged="SelectedPortChanged" Disabled="Disabled" />
+                    </div>
+                    <div class="row g-2">
+                        <div class="col-sm-3">
+                            <label class="form-label" for="scan-baud">Baud</label>
+                            <input id="scan-baud" class="form-control" type="number" min="1" list="scan-baud-rates"
+                                   @bind="Model.BaudRate" @bind:after="NotifyChangedAsync" />
+                            <datalist id="scan-baud-rates">
+                                @foreach (var rate in SerialSettings.CommonBaudRates)
+                                {
+                                    <option value="@rate"></option>
+                                }
+                            </datalist>
+                        </div>
+                        <div class="col-sm-3">
+                            <label class="form-label" for="scan-data-bits">Data bits</label>
+                            <select id="scan-data-bits" class="form-select" @bind="Model.DataBits" @bind:after="NotifyChangedAsync">
+                                <option value="8">8</option>
+                                <option value="7">7</option>
+                            </select>
+                        </div>
+                        <div class="col-sm-3">
+                            <label class="form-label" for="scan-parity">Parity</label>
+                            <select id="scan-parity" class="form-select" @bind="Model.Parity" @bind:after="NotifyChangedAsync">
+                                <option value="@Parity.None">None</option>
+                                <option value="@Parity.Even">Even</option>
+                                <option value="@Parity.Odd">Odd</option>
+                            </select>
+                        </div>
+                        <div class="col-sm-3">
+                            <label class="form-label" for="scan-stop-bits">Stop bits</label>
+                            <select id="scan-stop-bits" class="form-select" @bind="Model.StopBits" @bind:after="NotifyChangedAsync">
+                                <option value="@StopBits.One">1</option>
+                                <option value="@StopBits.Two">2</option>
+                            </select>
+                        </div>
+                    </div>
+                    @FieldError(nameof(ScanFormModel.BaudRate))
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-6">
+            <div class="card h-100">
+                <div class="card-header">Slave IDs</div>
+                <div class="card-body">
+                    <div class="row g-2">
+                        <div class="col-6">
+                            <label class="form-label" for="scan-from">From</label>
+                            <input id="scan-from" class="form-control" type="number" min="1" max="255"
+                                   @bind="Model.FromId" @bind:after="NotifyChangedAsync" />
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label" for="scan-to">To</label>
+                            <input id="scan-to" class="form-control" type="number" min="1" max="255"
+                                   @bind="Model.ToId" @bind:after="NotifyChangedAsync" />
+                        </div>
+                    </div>
+                    @FieldError(nameof(SlaveIdRange))
+                    <div class="form-check mt-3">
+                        <input id="scan-reserved" class="form-check-input" type="checkbox"
+                               @bind="Model.IncludeReservedIds" @bind:after="NotifyChangedAsync" />
+                        <label class="form-check-label" for="scan-reserved">Allow reserved IDs 248–255</label>
+                    </div>
+                    @if (Model.IncludeReservedIds)
+                    {
+                        <div class="form-text text-warning-emphasis">
+                            248–255 are reserved by the Modbus specification. Only scan them for devices known to misuse these addresses.
+                        </div>
+                    }
+                    <div class="form-text">
+                        Address 0 is broadcast and never answered, so it cannot be scanned.
+                        @if (Validation.Range is SlaveIdRange range)
+                        {
+                            <span>@range.Count ID(s) selected.</span>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-6">
+            <div class="card h-100">
+                <div class="card-header">Probe request</div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label class="form-label" for="scan-function">Function</label>
+                        <select id="scan-function" class="form-select" @bind="Model.FunctionCode" @bind:after="NotifyChangedAsync">
+                            <option value="@FunctionCode.ReadHoldingRegisters">FC03 Read Holding Registers</option>
+                            <option value="@FunctionCode.ReadInputRegisters">FC04 Read Input Registers</option>
+                            <option value="@FunctionCode.ReadCoils">FC01 Read Coils</option>
+                            <option value="@FunctionCode.ReadDiscreteInputs">FC02 Read Discrete Inputs</option>
+                            <option value="@FunctionCode.ReportServerId">FC17 Report Server ID</option>
+                            <option value="@FunctionCode.EncapsulatedInterfaceTransport">FC43/14 Read Device Identification</option>
+                        </select>
+                    </div>
+
+                    @if (Model.UsesAddressAndQuantity)
+                    {
+                        <div class="row g-2">
+                            <div class="col-6">
+                                <label class="form-label" for="scan-address">Start address</label>
+                                <input id="scan-address" class="form-control font-monospace" placeholder="0 or 0x0000"
+                                       @bind="Model.AddressText" @bind:event="oninput" @bind:after="NotifyChangedAsync" />
+                                @FieldError(nameof(ScanFormModel.AddressText))
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label" for="scan-quantity">Quantity</label>
+                                <input id="scan-quantity" class="form-control" type="number" min="1" max="@Model.MaxQuantity"
+                                       @bind="Model.Quantity" @bind:after="NotifyChangedAsync" />
+                                @FieldError(nameof(ScanFormModel.Quantity))
+                            </div>
+                        </div>
+                    }
+                    else if (Model.FunctionCode == FunctionCode.EncapsulatedInterfaceTransport)
+                    {
+                        <div class="row g-2">
+                            <div class="col-6">
+                                <label class="form-label" for="scan-device-id-code">Read Device ID code</label>
+                                <select id="scan-device-id-code" class="form-select" @bind="Model.ReadDeviceIdCode" @bind:after="NotifyChangedAsync">
+                                    <option value="@ReadDeviceIdCode.Basic">01 Basic</option>
+                                    <option value="@ReadDeviceIdCode.Regular">02 Regular</option>
+                                    <option value="@ReadDeviceIdCode.Extended">03 Extended</option>
+                                    <option value="@ReadDeviceIdCode.Specific">04 Specific object</option>
+                                </select>
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label" for="scan-object-id">Object ID</label>
+                                <input id="scan-object-id" class="form-control font-monospace" placeholder="0 or 0x00"
+                                       @bind="Model.ObjectIdText" @bind:event="oninput" @bind:after="NotifyChangedAsync" />
+                                @FieldError(nameof(ScanFormModel.ObjectIdText))
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="form-text">This function takes no parameters.</div>
+                    }
+
+                    <div class="mt-3">
+                        <span class="form-label">Request frame</span>
+                        @if (Validation.Probe is ProbeRequest probe)
+                        {
+                            var previewId = Validation.Range?.From ?? (byte)SlaveIdRange.FirstId;
+                            <div><code class="user-select-all">@Hex.Format(probe.BuildFrame(previewId))</code></div>
+                            <div class="form-text">For ID @previewId; the first byte changes per ID.</div>
+                        }
+                        else
+                        {
+                            <div class="form-text">Fix the parameters above to see the frame.</div>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-6">
+            <div class="card h-100">
+                <div class="card-header">Timing</div>
+                <div class="card-body">
+                    <div class="row g-2">
+                        <div class="col-sm-6">
+                            <label class="form-label" for="scan-timeout">Response timeout (ms)</label>
+                            <input id="scan-timeout" class="form-control" type="number" min="1" max="@ScanFormModel.MaxResponseTimeoutMs"
+                                   @bind="Model.ResponseTimeoutMs" @bind:after="NotifyChangedAsync" />
+                            @FieldError(nameof(ScanFormModel.ResponseTimeoutMs))
+                        </div>
+                        <div class="col-sm-6">
+                            <label class="form-label" for="scan-retries">Retries</label>
+                            <input id="scan-retries" class="form-control" type="number" min="0" max="@SlaveScanOptions.MaxRetries"
+                                   @bind="Model.Retries" @bind:after="NotifyChangedAsync" />
+                            @FieldError(nameof(ScanFormModel.Retries))
+                        </div>
+                        <div class="col-sm-6">
+                            <label class="form-label" for="scan-delay">Inter-request delay (ms)</label>
+                            <input id="scan-delay" class="form-control" type="number" min="0" max="@ScanFormModel.MaxInterRequestDelayMs"
+                                   @bind="Model.InterRequestDelayMs" @bind:after="NotifyChangedAsync" />
+                            @FieldError(nameof(ScanFormModel.InterRequestDelayMs))
+                        </div>
+                        <div class="col-sm-6">
+                            <label class="form-label" for="scan-frame-gap">Frame gap (ms)</label>
+                            <input id="scan-frame-gap" class="form-control" type="number" min="0" step="0.1" max="@ScanFormModel.MaxFrameGapMs"
+                                   placeholder="@AutoFrameGapPlaceholder"
+                                   @bind="Model.FrameGapMs" @bind:after="NotifyChangedAsync" />
+                            @FieldError(nameof(ScanFormModel.FrameGapMs))
+                        </div>
+                    </div>
+                    <div class="form-text">
+                        Silence that ends a received frame. Automatic uses max(t3.5, 20 ms): USB adapters and the browser
+                        deliver bytes in bursts, so strict t3.5 would split real replies.
+                    </div>
+                    <div class="form-check mt-3">
+                        <input id="scan-stop-first" class="form-check-input" type="checkbox"
+                               @bind="Model.StopAtFirstFound" @bind:after="NotifyChangedAsync" />
+                        <label class="form-check-label" for="scan-stop-first">Stop at first found device</label>
+                    </div>
+                    @if (Validation.Options is SlaveScanOptions options)
+                    {
+                        <div class="mt-3">
+                            Worst case if no device answers: <strong>@ScanFormatting.Duration(ScanEstimator.WorstCase(options))</strong>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+</fieldset>
+
+@code {
+    [Parameter, EditorRequired]
+    public ScanFormModel Model { get; set; } = default!;
+
+    [Parameter, EditorRequired]
+    public ScanFormValidation Validation { get; set; } = default!;
+
+    [Parameter]
+    public WebSerialPort? SelectedPort { get; set; }
+
+    [Parameter]
+    public EventCallback<WebSerialPort?> SelectedPortChanged { get; set; }
+
+    [Parameter]
+    public bool Disabled { get; set; }
+
+    /// <summary>Raised after any field changes, so the owner can revalidate.</summary>
+    [Parameter]
+    public EventCallback OnChange { get; set; }
+
+    private string AutoFrameGapPlaceholder => Validation.Serial is SerialSettings serial
+        ? $"auto ({ScanFormatting.Milliseconds(RtuTiming.DefaultFrameGap(serial))} ms)"
+        : "auto";
+
+    private Task NotifyChangedAsync() => OnChange.InvokeAsync();
+
+    private RenderFragment FieldError(string field) => __builder =>
+    {
+        if (Validation.ErrorFor(field) is string message)
+        {
+            <div class="text-danger small mt-1">@message</div>
+        }
+    };
+}

@@ -1,0 +1,49 @@
+<div class="card">
+    <div class="card-header">Summary</div>
+    <div class="card-body">
+        <div class="d-flex flex-wrap gap-2 mb-3">
+            @foreach (var status in StatusOrder)
+            {
+                <span class="badge @ScanFormatting.StatusBadgeClass(status) fs-6 fw-normal">
+                    @status.GetDisplayName(): @Session.Results.CountOf(status)
+                </span>
+            }
+        </div>
+
+        <dl class="row mb-0 small">
+            <dt class="col-sm-3">Scan time</dt>
+            <dd class="col-sm-9">
+                @ScanFormatting.Duration(Session.ActiveTime) active
+                @if (Session.StartedAt is DateTimeOffset started)
+                {
+                    <span class="text-body-secondary">
+                        (started @started.ToLocalTime().ToString("T")@(Session.FinishedAt is DateTimeOffset finished ? $", finished {finished.ToLocalTime():T}" : null))
+                    </span>
+                }
+            </dd>
+            <dt class="col-sm-3">Port</dt>
+            <dd class="col-sm-9">@Session.PortName, @Options.Serial</dd>
+            <dt class="col-sm-3">IDs</dt>
+            <dd class="col-sm-9">@Options.SlaveIds[0]–@Options.SlaveIds[^1] (@Options.SlaveIds.Count)</dd>
+            <dt class="col-sm-3">Probe</dt>
+            <dd class="col-sm-9">@Options.Probe.Description</dd>
+            <dt class="col-sm-3">Timing</dt>
+            <dd class="col-sm-9">
+                timeout @ScanFormatting.Milliseconds(Options.TimeoutStrategy.GetResponseTimeout(Options.SlaveIds[0], 1)) ms,
+                @Options.Retries retr@(Options.Retries == 1 ? "y" : "ies"),
+                delay @ScanFormatting.Milliseconds(Options.InterRequestDelay) ms,
+                frame gap @ScanFormatting.Milliseconds(Options.EffectiveFrameGap) ms@(Options.StopAtFirstFound ? ", stop at first found" : null)
+            </dd>
+        </dl>
+    </div>
+</div>
+
+@code {
+    private static readonly ProbeStatus[] StatusOrder =
+        [ProbeStatus.Ok, ProbeStatus.Exception, ProbeStatus.WrongId, ProbeStatus.Garbled, ProbeStatus.NoResponse];
+
+    [Parameter, EditorRequired]
+    public ScanSession Session { get; set; } = default!;
+
+    private SlaveScanOptions Options => Session.Options;
+}

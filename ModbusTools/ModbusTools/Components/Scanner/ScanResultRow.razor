@@ -1,0 +1,51 @@
+@{
+    var best = Result.BestAttempt;
+    renderedResult = Result;
+}
+<tr>
+    <td class="fw-semibold">@Result.SlaveId</td>
+    <td>
+        <span class="badge @ScanFormatting.StatusBadgeClass(Result.Status)">@Result.Status.GetDisplayName()</span>
+        @if (Result.IsInconsistent)
+        {
+            <span class="badge text-bg-warning ms-1" title="Attempts disagreed">Inconsistent</span>
+        }
+    </td>
+    <td>
+        @if (best.Classification.ExceptionCode is byte code)
+        {
+            <span title="@ModbusExceptionCodes.GetName(code)">@ModbusExceptionCodes.Format(code)</span>
+        }
+    </td>
+    <td class="text-end" title="@RawResponseTitle(best)">@ScanFormatting.Milliseconds(best.ResponseTime)</td>
+    <td class="text-end">@Result.Attempts.Count</td>
+    <td class="hex">@Hex.Format(best.Request.Span)</td>
+    <td class="hex">@Hex.Format(best.Response.Span)</td>
+    <td class="hex">@Hex.Format(Result.LateBytes.Span)</td>
+    <td class="notes">@string.Join(" ", Result.Notes)</td>
+    <td>
+        @if (Result.IsFound)
+        {
+            <button type="button" class="btn btn-sm btn-outline-primary text-nowrap" @onclick="() => OnOpenInCrawler.InvokeAsync(Result)">
+                Open in crawler
+            </button>
+        }
+    </td>
+</tr>
+
+@code {
+    private SlaveProbeResult? renderedResult;
+
+    /// <summary>Results are immutable once reported, so a row only re-renders when given a different result.</summary>
+    [Parameter, EditorRequired]
+    public SlaveProbeResult Result { get; set; } = default!;
+
+    [Parameter]
+    public EventCallback<SlaveProbeResult> OnOpenInCrawler { get; set; }
+
+    protected override bool ShouldRender() => !ReferenceEquals(renderedResult, Result);
+
+    private static string? RawResponseTitle(ProbeAttempt attempt) => attempt.RawResponseTime is TimeSpan raw
+        ? $"{ScanFormatting.Milliseconds(raw)} ms from write call"
+        : null;
+}

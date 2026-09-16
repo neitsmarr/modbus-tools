@@ -1,0 +1,32 @@
+<div class="table-responsive">
+    <table class="table table-sm table-hover align-middle scan-results">
+        <thead>
+            <tr>
+                <th scope="col">ID</th>
+                <th scope="col">Status</th>
+                <th scope="col">Exception</th>
+                <th scope="col" class="text-end" title="From the estimated end of transmission">Response (ms)</th>
+                <th scope="col" class="text-end">Attempts</th>
+                <th scope="col">TX</th>
+                <th scope="col">RX</th>
+                <th scope="col">Late bytes</th>
+                <th scope="col">Notes</th>
+                <th scope="col"><span class="visually-hidden">Actions</span></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var result in Results)
+            {
+                <ScanResultRow @key="result.SlaveId" Result="result" OnOpenInCrawler="OnOpenInCrawler" />
+            }
+        </tbody>
+    </table>
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public IEnumerable<SlaveProbeResult> Results { get; set; } = default!;
+
+    [Parameter]
+    public EventCallback<SlaveProbeResult> OnOpenInCrawler { get; set; }
+}
