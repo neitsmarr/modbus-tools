@@ -1,7 +1,74 @@
-﻿@page "/"
+@page "/"
 
-<PageTitle>Home</PageTitle>
+<PageTitle>ModbusTools</PageTitle>
 
-<h1>Hello, world!</h1>
+<h1>ModbusTools</h1>
 
-Welcome to your new app.
+<p class="lead">
+    Tools for working out what sits on a Modbus RTU (RS-485) bus and how it is set up, running entirely in the
+    browser. They drive a serial port through the Web Serial API: nothing to install, and nothing leaves the machine.
+</p>
+
+<p>
+    Every tool only reads. They send read and identification requests, never a write, so they are safe to point at a
+    live device — bearing in mind that reads themselves are not always free of side effects, since some devices clear
+    counters or drop queued events when those addresses are read.
+</p>
+
+<div class="row g-3 mt-1">
+    <div class="col-lg-4">
+        <div class="card h-100">
+            <div class="card-body">
+                <h2 class="h5 card-title">
+                    <a class="stretched-link text-decoration-none" href="scanner">Slave ID Scanner</a>
+                </h2>
+                <p class="card-text">
+                    Finds which addresses answer on a bus whose serial settings are already known. It probes every ID
+                    in a range with one read request and sorts what comes back into replies, exceptions, garbled
+                    frames and silence, then hands the settings straight to the other tools.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <div class="card h-100">
+            <div class="card-body">
+                <h2 class="h5 card-title">
+                    <a class="stretched-link text-decoration-none" href="crawler">Register Map Crawler</a>
+                </h2>
+                <p class="card-text">
+                    Maps which addresses exist in the data tables of one known slave, one address per request. The
+                    result is the set of valid ranges and the values they held, exportable as CSV or as a draft
+                    device profile.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <div class="card h-100">
+            <div class="card-body">
+                <h2 class="h5 card-title">
+                    <a class="stretched-link text-decoration-none" href="baud-sweep">Baud Rate Sweep</a>
+                </h2>
+                <p class="card-text">
+                    Measures how far the baud rate can drift before a device stops answering. The middle of the range
+                    that still works is the rate the device really runs at; the distance to its edges is the room
+                    left for clock drift.
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<h2 class="h4 mt-4">What you need</h2>
+
+<ul>
+    <li>A desktop Chromium-based browser — Chrome, Edge or Opera. Firefox and Safari have no Web Serial API.</li>
+    <li>The page opened over HTTPS or on localhost, which the API requires.</li>
+    <li>
+        A serial port: a USB-to-RS485 or USB-to-serial adapter, or a built-in COM port. The browser asks for
+        permission the first time each port is used, and remembers it afterwards.
+    </li>
+</ul>
