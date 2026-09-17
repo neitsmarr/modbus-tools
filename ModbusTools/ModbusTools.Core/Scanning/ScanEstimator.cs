@@ -21,21 +21,22 @@ public sealed class ScanEstimator
 
     public TimeSpan TotalDuration { get; private set; }
 
-    public void Record(TimeSpan idDuration)
+    /// <summary>Records the time one item (a slave ID, an address) took.</summary>
+    public void Record(TimeSpan itemDuration)
     {
         Samples++;
-        TotalDuration += idDuration;
-        window.Enqueue(idDuration);
-        windowSum += idDuration;
+        TotalDuration += itemDuration;
+        window.Enqueue(itemDuration);
+        windowSum += itemDuration;
         if (window.Count > windowSize)
         {
             windowSum -= window.Dequeue();
         }
     }
 
-    /// <summary>Average duration of the most recent IDs times <paramref name="remainingIds"/>; null before any sample.</summary>
-    public TimeSpan? EstimateRemaining(int remainingIds) =>
-        window.Count == 0 ? null : windowSum / window.Count * remainingIds;
+    /// <summary>Average duration of the most recent items times <paramref name="remainingItems"/>; null before any sample.</summary>
+    public TimeSpan? EstimateRemaining(int remainingItems) =>
+        window.Count == 0 ? null : windowSum / window.Count * remainingItems;
 
     /// <summary>
     /// Longest the scan can take if no ID answers: every attempt waits for the request to be sent, the full

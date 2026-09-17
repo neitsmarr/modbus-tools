@@ -2,6 +2,9 @@ namespace ModbusTools.Core.Protocol;
 
 public static class ModbusExceptionCodes
 {
+    public const byte IllegalFunction = 0x01;
+    public const byte IllegalDataAddress = 0x02;
+
     public static string GetName(byte code) => code switch
     {
         0x01 => "Illegal Function",

@@ -15,12 +15,13 @@ public static class ScanFormatting
         _ => "text-bg-secondary",
     };
 
-    /// <summary>Formats a duration as "850 ms", "12.4 s" or "3 min 05 s".</summary>
+    /// <summary>Formats a duration as "850 ms", "12.4 s", "3 min 05 s" or "4 h 20 min".</summary>
     public static string Duration(TimeSpan span) => span.TotalSeconds switch
     {
         < 1 => $"{span.TotalMilliseconds.ToString("0", CultureInfo.CurrentCulture)} ms",
         < 60 => $"{span.TotalSeconds.ToString("0.0", CultureInfo.CurrentCulture)} s",
-        _ => $"{(int)span.TotalMinutes} min {span.Seconds:00} s",
+        < 3600 => $"{(int)span.TotalMinutes} min {span.Seconds:00} s",
+        _ => $"{(int)span.TotalHours} h {span.Minutes:00} min",
     };
 
     public static string Milliseconds(TimeSpan? span) =>

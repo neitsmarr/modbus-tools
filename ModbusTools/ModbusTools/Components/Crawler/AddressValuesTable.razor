@@ -1,0 +1,142 @@
+@if (selected is not null)
+{
+    <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+        <div class="btn-group" role="group" aria-label="Table">
+            @foreach (var table in Result.Tables)
+            {
+                <button type="button" class="btn btn-sm @(table == selected ? "btn-secondary" : "btn-outline-secondary")"
+                        aria-pressed="@(table == selected)" title="@table.Table.GetDisplayName()" @onclick="() => SelectAsync(table, filter)">
+                    @table.Table.GetShortName()
+                </button>
+            }
+        </div>
+        <div class="btn-group flex-wrap" role="group" aria-label="Filter by status">
+            <button type="button" class="btn btn-sm @(filter is null ? "btn-secondary" : "btn-outline-secondary")"
+                    aria-pressed="@(filter is null)" @onclick="() => SelectAsync(selected, null)">
+                All checked (@CrawlFormatting.Count(selected.CheckedCount))
+            </button>
+            @foreach (var status in CrawlFormatting.StatusOrder.Where(s => s != AddressStatus.NotChecked))
+            {
+                <button type="button" class="btn btn-sm @(filter == status ? "btn-secondary" : "btn-outline-secondary")"
+                        aria-pressed="@(filter == status)" @onclick="() => SelectAsync(selected, status)">
+                    @status.GetDisplayName() (@CrawlFormatting.Count(selected.CountOf(status)))
+                </button>
+            }
+        </div>
+    </div>
+
+    <div class="values-scroll border rounded">
+        <table class="table table-sm table-hover align-middle mb-0 crawl-values">
+            <thead>
+                <tr>
+                    <th scope="col" class="text-end">Address</th>
+                    <th scope="col">Hex</th>
+                    <th scope="col">Status</th>
+                    <th scope="col" class="text-end">Value (hex)</th>
+                    <th scope="col" class="text-end">Value (dec)</th>
+                    <th scope="col">Exception</th>
+                    <th scope="col" class="text-end" title="From the estimated end of transmission">Response (ms)</th>
+                    <th scope="col">Detail</th>
+                </tr>
+            </thead>
+            <tbody>
+                <Virtualize @ref="virtualize" TItem="AddressEntry" ItemsProvider="ProvideEntries" ItemSize="31" SpacerElement="tr" Context="entry">
+                    <ItemContent>
+                        <tr>
+                            <td class="text-end font-monospace">@entry.Address</td>
+                            <td class="font-monospace text-body-secondary">0x@(entry.Address.ToString("X4"))</td>
+                            <td><span class="badge @CrawlFormatting.StatusBadgeClass(entry.Status)">@entry.Status.GetDisplayName()</span></td>
+                            @if (entry.Status == AddressStatus.Valid)
+                            {
+                                <td class="text-end font-monospace">@entry.Table.FormatValueHex(entry.Value)</td>
+                                <td class="text-end font-monospace">@entry.Value</td>
+                            }
+                            else
+                            {
+                                <td></td>
+                                <td></td>
+                            }
+                            <td>@(entry.ExceptionCode is byte code ? ModbusExceptionCodes.Format(code) : null)</td>
+                            <td class="text-end">@ScanFormatting.Milliseconds(entry.ResponseTime)</td>
+                            <td class="detail">@entry.Detail</td>
+                        </tr>
+                    </ItemContent>
+                    <EmptyContent>
+                        <tr>
+                            <td colspan="8" class="text-body-secondary">No addresses match.</td>
+                        </tr>
+                    </EmptyContent>
+                </Virtualize>
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    private Virtualize<AddressEntry>? virtualize;
+    private CrawlResult? shownResult;
+    private CrawlTableResult? selected;
+    private AddressStatus? filter;
+
+    // Addresses of the selected table that pass the filter, as of matchesVersion.
+    private List<int> matches = [];
+    private int matchesVersion = -1;
+
+    /// <summary>Results to show; the page re-renders this component whenever they may have changed.</summary>
+    [Parameter, EditorRequired]
+    public CrawlResult Result { get; set; } = default!;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!ReferenceEquals(shownResult, Result))
+        {
+            shownResult = Result;
+            await SelectAsync(Result.Tables[0], null);
+        }
+        else if (selected is not null && matchesVersion != selected.Version)
+        {
+            await RefreshAsync();
+        }
+    }
+
+    private async Task SelectAsync(CrawlTableResult table, AddressStatus? status)
+    {
+        selected = table;
+        filter = status;
+        await RefreshAsync();
+    }
+
+    private async Task RefreshAsync()
+    {
+        var table = selected!;
+        var found = new List<int>();
+        for (int address = table.Range.From; address <= table.Range.To; address++)
+        {
+            var status = table.GetStatus(address);
+            if (filter is AddressStatus wanted ? status == wanted : status != AddressStatus.NotChecked)
+            {
+                found.Add(address);
+            }
+        }
+
+        matches = found;
+        matchesVersion = table.Version;
+        if (virtualize is not null)
+        {
+            await virtualize.RefreshDataAsync();
+        }
+    }
+
+    private ValueTask<ItemsProviderResult<AddressEntry>> ProvideEntries(ItemsProviderRequest request)
+    {
+        var table = selected!;
+        var count = Math.Max(0, Math.Min(request.Count, matches.Count - request.StartIndex));
+        var entries = new AddressEntry[count];
+        for (var i = 0; i < count; i++)
+        {
+            entries[i] = table.GetEntry(matches[request.StartIndex + i]);
+        }
+
+        return ValueTask.FromResult(new ItemsProviderResult<AddressEntry>(entries, matches.Count));
+    }
+}

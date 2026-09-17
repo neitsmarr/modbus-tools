@@ -1,0 +1,61 @@
+@{
+    var progress = Session.Progress;
+    var percent = progress.TotalAddresses == 0 ? 0 : 100.0 * progress.CheckedAddresses / progress.TotalAddresses;
+}
+<div class="card">
+    <div class="card-body">
+        <div class="d-flex flex-wrap justify-content-between gap-2 mb-2">
+            <div>
+                <strong>@StateText</strong>
+                @if (Session.State != ScanSessionState.Finished && Session.CurrentTable is CrawlTable table)
+                {
+                    <span class="ms-2">
+                        @table.GetDisplayName()@(Session.CurrentRead is CrawlRead read ? $", address {read}" : null)
+                    </span>
+                }
+            </div>
+            <div class="text-body-secondary">
+                @CrawlFormatting.Requests(Session.EstimatedRequests) requests planned, ~@ScanFormatting.Duration(Session.WorstCase) if nothing answers
+            </div>
+        </div>
+
+        <div class="progress mb-2" role="progressbar" aria-label="Crawl progress"
+             aria-valuenow="@progress.CheckedAddresses" aria-valuemin="0" aria-valuemax="@progress.TotalAddresses">
+            <div class="progress-bar @(Session.State == ScanSessionState.Running ? "progress-bar-striped progress-bar-animated" : null)"
+                 style="width: @percent.ToString("0.##", CultureInfo.InvariantCulture)%"></div>
+        </div>
+
+        <div class="d-flex flex-wrap gap-4">
+            <span>Checked <strong>@CrawlFormatting.Count(progress.CheckedAddresses) / @CrawlFormatting.Count(progress.TotalAddresses)</strong></span>
+            <span>Requests <strong>@CrawlFormatting.Count(progress.Requests)</strong></span>
+            <span>Elapsed <strong>@ScanFormatting.Duration(Session.ActiveTime)</strong></span>
+            @if (Session.State != ScanSessionState.Finished)
+            {
+                <span>
+                    ETA <strong>@(progress.EstimatedRemaining is TimeSpan eta ? ScanFormatting.Duration(eta) : "–")</strong>
+                </span>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public CrawlSession Session { get; set; } = default!;
+
+    private string StateText => Session.State switch
+    {
+        ScanSessionState.Running when Session.IsCancellationRequested => "Cancelling after the current transaction…",
+        ScanSessionState.Running => "Crawling",
+        ScanSessionState.Paused when Session.IsCancellationRequested => "Cancelling…",
+        ScanSessionState.Paused => "Paused",
+        ScanSessionState.Finished => Session.Outcome switch
+        {
+            CrawlOutcome.Completed => "Completed",
+            CrawlOutcome.Cancelled => "Cancelled",
+            CrawlOutcome.Failed => "Failed",
+            _ => "Finished",
+        },
+        _ => "Starting",
+    };
+}

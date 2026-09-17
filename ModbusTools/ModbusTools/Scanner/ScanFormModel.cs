@@ -1,3 +1,4 @@
+using ModbusTools.Components.Serial;
 using ModbusTools.Core.Protocol;
 using ModbusTools.Core.Scanning;
 using ModbusTools.Core.Serial;
@@ -5,7 +6,7 @@ using ModbusTools.Core.Serial;
 namespace ModbusTools.Scanner;
 
 /// <summary>Editable state of the scan configuration form; <see cref="Validate"/> turns it into scan options.</summary>
-public sealed class ScanFormModel
+public sealed class ScanFormModel : ISerialSettingsForm
 {
     public const int MaxResponseTimeoutMs = 60_000;
     public const int MaxInterRequestDelayMs = 10_000;
@@ -59,15 +60,7 @@ public sealed class ScanFormModel
     {
         var errors = new Dictionary<string, string>();
 
-        SerialSettings? serial = null;
-        if (BaudRate <= 0)
-        {
-            errors[nameof(BaudRate)] = "Baud rate must be positive.";
-        }
-        else
-        {
-            serial = new SerialSettings(BaudRate, DataBits, Parity, StopBits);
-        }
+        var serial = ISerialSettingsForm.Validate(this, errors);
 
         SlaveIdRange? range = null;
         if (SlaveIdRange.TryCreate(FromId, ToId, IncludeReservedIds, out var validRange, out var rangeError))

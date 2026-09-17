@@ -30,6 +30,13 @@ public sealed record ReadBitsProbe : ProbeRequest
 
     public override string? ValidateResponsePdu(ReadOnlySpan<byte> pdu) => ValidateByteCountPayload(pdu, DataByteCount);
 
+    /// <summary>
+    /// Reads bit <paramref name="index"/> (0 = the request's start address) from a complete response frame that was
+    /// classified OK: address, function code, byte count, data packed least significant bit first, CRC.
+    /// </summary>
+    public static bool GetBit(ReadOnlySpan<byte> response, int index) =>
+        (response[ResponseDataOffset + index / 8] & (1 << (index % 8))) != 0;
+
     protected override byte[] BuildPdu() =>
         [(byte)FunctionCode, (byte)(Address >> 8), (byte)Address, (byte)(Quantity >> 8), (byte)Quantity];
 

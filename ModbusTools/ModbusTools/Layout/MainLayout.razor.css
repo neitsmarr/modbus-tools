@@ -6,6 +6,8 @@
 
 main {
     flex: 1;
+    /* Lets wide tables scroll inside their containers instead of widening the page. */
+    min-width: 0;
 }
 
 .sidebar {

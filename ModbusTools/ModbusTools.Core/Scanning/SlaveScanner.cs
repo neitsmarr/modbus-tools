@@ -1,6 +1,5 @@
 using System.Runtime.CompilerServices;
 using ModbusTools.Core.Protocol;
-using ModbusTools.Core.Serial;
 using ModbusTools.Core.Transport;
 
 namespace ModbusTools.Core.Scanning;
@@ -14,20 +13,15 @@ namespace ModbusTools.Core.Scanning;
 /// same engine can be reused per settings combination by a settings sweep.
 /// </para>
 /// <para>
-/// Every transaction follows the same flush discipline so that a slow slave's reply is never taken as the answer of
-/// a later ID: discard stale input, send, read the response, wait until the line is silent for the frame gap
-/// (recording anything received as late bytes of this attempt), apply the inter-request delay and discard whatever
-/// arrived meanwhile into the same late bytes.
-/// </para>
-/// <para>
-/// Pause and cancellation are only honoured between transactions, never while a frame is being sent or received.
+/// Transactions follow the flush discipline of <see cref="ProbeTransactionRunner"/>. Pause and cancellation are only
+/// honoured between transactions, never while a frame is being sent or received.
 /// </para>
 /// </remarks>
 public sealed class SlaveScanner
 {
     private readonly IModbusRtuTransport transport;
     private readonly TimeProvider timeProvider;
-    private readonly RtuFrameReader frameReader;
+    private readonly ProbeTransactionRunner runner;
 
     public SlaveScanner(IModbusRtuTransport transport, TimeProvider timeProvider)
     {
@@ -35,7 +29,7 @@ public sealed class SlaveScanner
         ArgumentNullException.ThrowIfNull(timeProvider);
         this.transport = transport;
         this.timeProvider = timeProvider;
-        frameReader = new RtuFrameReader(transport, timeProvider);
+        runner = new ProbeTransactionRunner(transport, timeProvider);
     }
 
     /// <summary>
@@ -54,6 +48,8 @@ public sealed class SlaveScanner
         }
 
         var ids = options.SlaveIds;
+        var timing = new TransactionTiming(
+            options.Serial, options.EffectiveFrameGap, options.InterRequestDelay, options.MaxFlushDuration);
         var estimator = new ScanEstimator();
         var found = 0;
         ScanProgress progress = new(0, ids.Count, 0, TimeSpan.Zero, null);
@@ -62,7 +58,7 @@ public sealed class SlaveScanner
 
         for (var index = 0; index < ids.Count; index++)
         {
-            await WaitBetweenTransactionsAsync(pauseToken, cancellationToken);
+            await runner.WaitBetweenTransactionsAsync(pauseToken, cancellationToken);
 
             var slaveId = ids[index];
             yield return new ProbeStartedEvent(slaveId, index);
@@ -74,10 +70,11 @@ public sealed class SlaveScanner
             {
                 if (attemptNumber > 1)
                 {
-                    pausedFor += await WaitBetweenTransactionsAsync(pauseToken, cancellationToken);
+                    pausedFor += await runner.WaitBetweenTransactionsAsync(pauseToken, cancellationToken);
                 }
 
-                var attempt = await ExecuteAttemptAsync(options, slaveId, attemptNumber);
+                var timeout = options.TimeoutStrategy.GetResponseTimeout(slaveId, attemptNumber);
+                var attempt = await runner.ExecuteAsync(options.Probe, slaveId, timeout, timing, attemptNumber);
                 options.TimeoutStrategy.OnAttemptCompleted(slaveId, attempt);
                 attempts.Add(attempt);
                 if (attempt.Status.IsFound())
@@ -107,92 +104,5 @@ public sealed class SlaveScanner
         }
 
         yield return new ScanFinishedEvent(ScanOutcome.Completed, progress);
-    }
-
-    /// <summary>Honours pause and cancellation requests; returns how long the scan was paused.</summary>
-    private async Task<TimeSpan> WaitBetweenTransactionsAsync(PauseToken pauseToken, CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        if (!pauseToken.IsPaused)
-        {
-            return TimeSpan.Zero;
-        }
-
-        var start = timeProvider.GetTimestamp();
-        await pauseToken.WaitWhilePausedAsync(cancellationToken);
-        cancellationToken.ThrowIfCancellationRequested();
-        return timeProvider.GetElapsedTime(start);
-    }
-
-    // A transaction is never interrupted part-way, so no cancellation token is passed below.
-    private async Task<ProbeAttempt> ExecuteAttemptAsync(SlaveScanOptions options, byte slaveId, int attemptNumber)
-    {
-        var frameGap = options.EffectiveFrameGap;
-        var stale = await transport.DiscardInputAsync();
-
-        var request = options.Probe.BuildFrame(slaveId);
-        var timeout = options.TimeoutStrategy.GetResponseTimeout(slaveId, attemptNumber);
-        var startedAt = timeProvider.GetUtcNow();
-        var writeTimestamp = timeProvider.GetTimestamp();
-        await transport.WriteAsync(request);
-
-        // The write completing only means the bytes were queued; estimate when the last one left the transmitter.
-        var transmitEndTimestamp = writeTimestamp +
-            ToTimestampDelta(RtuTiming.TransmissionTime(options.Serial, request.Length));
-        var deadline = transmitEndTimestamp + ToTimestampDelta(timeout);
-
-        var frame = await frameReader.ReadResponseAsync(options.Probe, deadline, frameGap);
-        var classification = ResponseClassifier.Classify(options.Probe, slaveId, frame.Bytes.Span);
-
-        TimeSpan? responseTime = null;
-        TimeSpan? rawResponseTime = null;
-        if (frame.FirstByteTimestamp is long firstByte)
-        {
-            rawResponseTime = timeProvider.GetElapsedTime(writeTimestamp, firstByte);
-            var sinceTransmitEnd = timeProvider.GetElapsedTime(transmitEndTimestamp, firstByte);
-            responseTime = sinceTransmitEnd > TimeSpan.Zero ? sinceTransmitEnd : TimeSpan.Zero;
-        }
-
-        var late = await frameReader.ReadUntilSilentAsync(frameGap, options.MaxFlushDuration);
-        if (options.InterRequestDelay > TimeSpan.Zero)
-        {
-            await Task.Delay(options.InterRequestDelay, timeProvider);
-        }
-
-        var arrivedDuringDelay = await transport.DiscardInputAsync();
-
-        return new ProbeAttempt
-        {
-            Number = attemptNumber,
-            StartedAt = startedAt,
-            Classification = classification,
-            Request = request,
-            Response = frame.Bytes,
-            LateBytes = Concat(late, arrivedDuringDelay),
-            StaleBytes = stale,
-            ResponseTimeout = timeout,
-            ResponseTime = responseTime,
-            RawResponseTime = rawResponseTime,
-        };
-    }
-
-    private long ToTimestampDelta(TimeSpan span) => (long)(span.TotalSeconds * timeProvider.TimestampFrequency);
-
-    private static ReadOnlyMemory<byte> Concat(ReadOnlyMemory<byte> first, ReadOnlyMemory<byte> second)
-    {
-        if (second.IsEmpty)
-        {
-            return first;
-        }
-
-        if (first.IsEmpty)
-        {
-            return second;
-        }
-
-        var combined = new byte[first.Length + second.Length];
-        first.Span.CopyTo(combined);
-        second.Span.CopyTo(combined.AsSpan(first.Length));
-        return combined;
     }
 }

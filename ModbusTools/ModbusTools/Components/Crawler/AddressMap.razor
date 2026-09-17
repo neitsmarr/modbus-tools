@@ -1,0 +1,123 @@
+<div class="d-flex flex-wrap gap-3 small mb-2" aria-hidden="true">
+    @foreach (var status in CrawlFormatting.StatusOrder)
+    {
+        <span><span class="legend-swatch @ColorClass(status)"></span>@status.GetDisplayName()</span>
+    }
+</div>
+
+@foreach (var table in Result.Tables)
+{
+    var runs = GetRuns(table);
+    <div class="mb-3">
+        <div class="d-flex justify-content-between small">
+            <span><span class="fw-semibold font-monospace">@table.Table.GetShortName()</span> @table.Table.GetDisplayName()</span>
+            <span class="text-body-secondary">@CrawlFormatting.Count(table.CountOf(AddressStatus.Valid)) valid</span>
+        </div>
+        <svg class="address-strip" viewBox="0 0 @BucketCount(table) 1" preserveAspectRatio="none" shape-rendering="crispEdges"
+             role="img" aria-label="@($"{table.Table.GetDisplayName()} address map")">
+            @foreach (var run in runs)
+            {
+                <rect class="@ColorClass(run.Status)" x="@run.FirstBucket" y="0" width="@run.BucketCount" height="1">
+                    <title>@run.Title</title>
+                </rect>
+            }
+        </svg>
+        <div class="d-flex justify-content-between small text-body-secondary font-monospace">
+            <span>@table.Range.From</span>
+            <span>@table.Range.To</span>
+        </div>
+    </div>
+}
+
+@code {
+    /// <summary>Upper bound on strip cells; above it, each cell covers several addresses.</summary>
+    private const int MaxBuckets = 1000;
+
+    /// <summary>When a cell covers addresses with different statuses, it shows the first status present in this order.</summary>
+    private static readonly AddressStatus[] CellPriority =
+    [
+        AddressStatus.Valid, AddressStatus.Exception, AddressStatus.CommError, AddressStatus.NoResponse,
+        AddressStatus.Invalid, AddressStatus.NotChecked,
+    ];
+
+    private readonly Dictionary<CrawlTable, (int Version, IReadOnlyList<StripRun> Runs)> cache = [];
+
+    [Parameter, EditorRequired]
+    public CrawlResult Result { get; set; } = default!;
+
+    private static string ColorClass(AddressStatus status) => $"status-{status.ToString().ToLowerInvariant()}";
+
+    private static int BucketCount(CrawlTableResult table) => Math.Min(table.Range.Count, MaxBuckets);
+
+    private IReadOnlyList<StripRun> GetRuns(CrawlTableResult table)
+    {
+        if (cache.TryGetValue(table.Table, out var cached) && cached.Version == table.Version)
+        {
+            return cached.Runs;
+        }
+
+        var runs = BuildRuns(table);
+        cache[table.Table] = (table.Version, runs);
+        return runs;
+    }
+
+    /// <summary>Splits the range into cells, colours each by <see cref="CellPriority"/> and merges neighbours of equal colour.</summary>
+    private static IReadOnlyList<StripRun> BuildRuns(CrawlTableResult table)
+    {
+        var range = table.Range;
+        var bucketCount = BucketCount(table);
+        var runs = new List<StripRun>();
+        for (var bucket = 0; bucket < bucketCount; bucket++)
+        {
+            var first = range.From + (int)((long)bucket * range.Count / bucketCount);
+            var last = range.From + (int)((long)(bucket + 1) * range.Count / bucketCount) - 1;
+            var counts = new int[CellPriority.Length];
+            for (var address = first; address <= last; address++)
+            {
+                counts[(int)table.GetStatus(address)]++;
+            }
+
+            var status = CellPriority.First(s => counts[(int)s] > 0);
+            if (runs.Count > 0 && runs[^1].Status == status)
+            {
+                runs[^1].Extend(last, counts);
+            }
+            else
+            {
+                runs.Add(new StripRun(bucket, first, last, status, counts));
+            }
+        }
+
+        return runs;
+    }
+
+    private sealed class StripRun(int firstBucket, int firstAddress, int lastAddress, AddressStatus status, int[] counts)
+    {
+        public int FirstBucket => firstBucket;
+
+        public int BucketCount { get; private set; } = 1;
+
+        public AddressStatus Status => status;
+
+        public string Title
+        {
+            get
+            {
+                var parts = CrawlFormatting.StatusOrder
+                    .Where(s => counts[(int)s] > 0)
+                    .Select(s => $"{CrawlFormatting.Count(counts[(int)s])} {s.GetDisplayName().ToLowerInvariant()}");
+                return $"{CrawlFormatting.Range(new AddressRange((ushort)firstAddress, (ushort)lastAddress))}: {string.Join(", ", parts)}";
+            }
+        }
+
+        public void Extend(int newLastAddress, int[] moreCounts)
+        {
+            lastAddress = newLastAddress;
+            BucketCount++;
+            for (var i = 0; i < counts.Length; i++)
+            {
+                counts[i] += moreCounts[i];
+            }
+        }
+    }
+}

@@ -1,0 +1,77 @@
+<div class="mb-3">
+    <label class="form-label" for="@Id("port")">Port</label>
+    <SerialPortSelector InputId="@Id("port")" SelectedPort="SelectedPort" SelectedPortChanged="SelectedPortChanged"
+                        PreferredPortId="@PreferredPortId" Disabled="Disabled" />
+</div>
+<div class="row g-2">
+    <div class="col-sm-3">
+        <label class="form-label" for="@Id("baud")">Baud</label>
+        <input id="@Id("baud")" class="form-control" type="number" min="1" list="@Id("baud-rates")"
+               @bind="Model.BaudRate" @bind:after="NotifyChangedAsync" />
+        <datalist id="@Id("baud-rates")">
+            @foreach (var rate in SerialSettings.CommonBaudRates)
+            {
+                <option value="@rate"></option>
+            }
+        </datalist>
+    </div>
+    <div class="col-sm-3">
+        <label class="form-label" for="@Id("data-bits")">Data bits</label>
+        <select id="@Id("data-bits")" class="form-select" @bind="Model.DataBits" @bind:after="NotifyChangedAsync">
+            <option value="8">8</option>
+            <option value="7">7</option>
+        </select>
+    </div>
+    <div class="col-sm-3">
+        <label class="form-label" for="@Id("parity")">Parity</label>
+        <select id="@Id("parity")" class="form-select" @bind="Model.Parity" @bind:after="NotifyChangedAsync">
+            <option value="@Parity.None">None</option>
+            <option value="@Parity.Even">Even</option>
+            <option value="@Parity.Odd">Odd</option>
+        </select>
+    </div>
+    <div class="col-sm-3">
+        <label class="form-label" for="@Id("stop-bits")">Stop bits</label>
+        <select id="@Id("stop-bits")" class="form-select" @bind="Model.StopBits" @bind:after="NotifyChangedAsync">
+            <option value="@StopBits.One">1</option>
+            <option value="@StopBits.Two">2</option>
+        </select>
+    </div>
+</div>
+@if (BaudRateError is string error)
+{
+    <div class="text-danger small mt-1">@error</div>
+}
+
+@code {
+    [Parameter, EditorRequired]
+    public ISerialSettingsForm Model { get; set; } = default!;
+
+    /// <summary>Prefix for element IDs, e.g. "scan" gives "scan-port" and "scan-baud".</summary>
+    [Parameter, EditorRequired]
+    public string IdPrefix { get; set; } = default!;
+
+    [Parameter]
+    public WebSerialPort? SelectedPort { get; set; }
+
+    [Parameter]
+    public EventCallback<WebSerialPort?> SelectedPortChanged { get; set; }
+
+    /// <inheritdoc cref="SerialPortSelector.PreferredPortId"/>
+    [Parameter]
+    public string? PreferredPortId { get; set; }
+
+    [Parameter]
+    public bool Disabled { get; set; }
+
+    [Parameter]
+    public string? BaudRateError { get; set; }
+
+    /// <summary>Raised after any field changes, so the owner can revalidate.</summary>
+    [Parameter]
+    public EventCallback OnChange { get; set; }
+
+    private string Id(string field) => $"{IdPrefix}-{field}";
+
+    private Task NotifyChangedAsync() => OnChange.InvokeAsync();
+}

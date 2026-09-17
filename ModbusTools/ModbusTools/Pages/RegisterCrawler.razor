@@ -1,29 +1,125 @@
 @page "/crawler"
+@implements IAsyncDisposable
+@inject WebSerialService Serial
+@inject TimeProvider TimeProvider
+@inject BrowserFileDownloader Downloader
 
 <PageTitle>Register Map Crawler</PageTitle>
 
 <h1>Register Map Crawler</h1>
 
-<div class="alert alert-info" role="status">
-    The Register Map Crawler is not implemented yet. This placeholder shows the parameters it received.
-</div>
+<p>
+    Discover which addresses exist in each data table of one known slave. The crawler only sends read requests
+    (FC01–FC04), one address per request, and never writes.
+</p>
 
-<dl class="row">
-    <dt class="col-sm-2">Port</dt>
-    <dd class="col-sm-10">@Display(Port)</dd>
-    <dt class="col-sm-2">Baud rate</dt>
-    <dd class="col-sm-10">@Display(Baud)</dd>
-    <dt class="col-sm-2">Data bits</dt>
-    <dd class="col-sm-10">@Display(DataBits)</dd>
-    <dt class="col-sm-2">Parity</dt>
-    <dd class="col-sm-10">@Display(Parity)</dd>
-    <dt class="col-sm-2">Stop bits</dt>
-    <dd class="col-sm-10">@Display(StopBits)</dd>
-    <dt class="col-sm-2">Slave ID</dt>
-    <dd class="col-sm-10">@Display(Id)</dd>
-</dl>
+@if (isSupported is null)
+{
+    <p><em>Checking Web Serial support...</em></p>
+}
+else if (isSupported == false)
+{
+    <div class="alert alert-warning" role="alert">
+        The Web Serial API is not available in this browser. Use a desktop Chromium-based browser
+        (Chrome, Edge or Opera) and open the app over HTTPS or on localhost.
+    </div>
+}
+else
+{
+    <CrawlConfigForm Model="model" Validation="validation" Disabled="IsRunning" PreferredPortId="@Port"
+                     @bind-SelectedPort="selectedPort" OnChange="Revalidate" />
+
+    <div class="alert alert-warning py-2 mt-3 mb-0" role="note">
+        Reads can have side effects: some devices reset counters or remove queued events when those addresses are read.
+    </div>
+
+    <div class="d-flex flex-wrap align-items-center gap-2 my-3">
+        @if (!IsRunning)
+        {
+            <button type="button" class="btn btn-primary" @onclick="StartAsync" disabled="@(!CanStart)">Start crawl</button>
+            @if (selectedPort is null)
+            {
+                <span class="text-body-secondary">Select or add a serial port to start.</span>
+            }
+            else if (!validation.IsValid)
+            {
+                <span class="text-danger">Fix the highlighted settings to start.</span>
+            }
+        }
+        else
+        {
+            @if (session!.State == ScanSessionState.Paused)
+            {
+                <button type="button" class="btn btn-success" @onclick="session.Resume" disabled="@session.IsCancellationRequested">Resume</button>
+            }
+            else
+            {
+                <button type="button" class="btn btn-outline-secondary" @onclick="session.Pause" disabled="@session.IsCancellationRequested">Pause</button>
+            }
+
+            <button type="button" class="btn btn-outline-danger" @onclick="session.Cancel" disabled="@session.IsCancellationRequested">Cancel</button>
+            <span class="text-body-secondary small">Pause and cancel take effect after the current transaction.</span>
+        }
+    </div>
+
+    @if (session is not null)
+    {
+        <CrawlProgressPanel Session="session" />
+
+        @if (session.Outcome == CrawlOutcome.Failed && session.Error is not null)
+        {
+            <div class="alert alert-danger mt-3" role="alert">
+                Crawl failed: @JsErrors.FirstLine(session.Error)
+                The port was released; check the connection and try again. Results so far are kept below.
+            </div>
+        }
+
+        <div class="mt-3">
+            <CrawlSummary Session="session" />
+        </div>
+
+        <div class="card mt-3">
+            <div class="card-header">Address map</div>
+            <div class="card-body">
+                <AddressMap Result="session.Result" />
+            </div>
+        </div>
+
+        <div class="card mt-3">
+            <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+                <span>Values</span>
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-sm btn-outline-primary" @onclick="ExportCsvAsync" disabled="@(!CanExport)">Export CSV</button>
+                    <button type="button" class="btn btn-sm btn-outline-primary" @onclick="ExportProfileAsync" disabled="@(!CanExport)"
+                            title="Draft device profile: communication settings, supported tables, valid ranges and observed values">
+                        Export device profile (JSON)
+                    </button>
+                </div>
+            </div>
+            <div class="card-body">
+                @if (exportError is not null)
+                {
+                    <div class="alert alert-danger" role="alert">@exportError</div>
+                }
+
+                <AddressValuesTable Result="session.Result" />
+            </div>
+        </div>
+    }
+}
 
 @code {
+    // How often the page re-renders while a crawl runs; reads complete faster than they need to be drawn.
+    private static readonly TimeSpan RefreshInterval = TimeSpan.FromMilliseconds(150);
+
+    private readonly CrawlFormModel model = new();
+    private CrawlFormValidation validation = default!;
+    private bool? isSupported;
+    private WebSerialPort? selectedPort;
+    private CrawlSession? session;
+    private Task? runTask;
+    private string? exportError;
+
     /// <summary>Port identifier as produced by the scanner, e.g. "0403:6001#1".</summary>
     [SupplyParameterFromQuery]
     public string? Port { get; set; }
@@ -44,5 +140,93 @@
     [SupplyParameterFromQuery]
     public int? Id { get; set; }
 
-    private static string Display(object? value) => value?.ToString() ?? "(not provided)";
+    private bool IsRunning => session is { State: not ScanSessionState.Finished };
+
+    private bool CanStart => !IsRunning && selectedPort is not null && validation.IsValid;
+
+    private bool CanExport => session is { State: ScanSessionState.Finished } && session.Result.Statistics.Requests > 0;
+
+    protected override void OnInitialized()
+    {
+        model.ApplyQuery(Baud, DataBits, Parity, StopBits, Id);
+        Revalidate();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        isSupported = await Serial.IsSupportedAsync();
+        StateHasChanged();
+    }
+
+    private void Revalidate() => validation = model.Validate();
+
+    private async Task StartAsync()
+    {
+        if (!CanStart || validation.Options is not CrawlOptions options)
+        {
+            return;
+        }
+
+        exportError = null;
+        var port = selectedPort!;
+        session = new CrawlSession(options, port.DisplayName, TimeProvider);
+        runTask = RunAsync(session, new WebSerialTransport(port, TimeProvider));
+        await runTask;
+    }
+
+    private async Task RunAsync(CrawlSession crawl, WebSerialTransport transport)
+    {
+        await using (transport)
+        {
+            var run = crawl.RunAsync(transport);
+            while (!run.IsCompleted)
+            {
+                await Task.WhenAny(run, Task.Delay(RefreshInterval, TimeProvider));
+                StateHasChanged();
+            }
+
+            await run;
+        }
+    }
+
+    private Task ExportCsvAsync() => ExportAsync("register-map", "csv", "text/csv", CrawlReportExporter.ToCsv);
+
+    private Task ExportProfileAsync() =>
+        ExportAsync("device-profile-draft", "json", "application/json", CrawlReportExporter.ToDeviceProfileJson);
+
+    private async Task ExportAsync(string name, string extension, string contentType, Func<CrawlReport, string> format)
+    {
+        if (session is null)
+        {
+            return;
+        }
+
+        exportError = null;
+        var report = session.CreateReport();
+        var timestamp = (report.StartedAt ?? TimeProvider.GetUtcNow()).ToLocalTime();
+        var fileName = $"{name}-id{report.Options.SlaveId}-{timestamp:yyyyMMdd-HHmmss}.{extension}";
+        try
+        {
+            await Downloader.DownloadAsync(fileName, contentType, Encoding.UTF8.GetBytes(format(report)));
+        }
+        catch (JSException ex)
+        {
+            exportError = $"Export failed: {JsErrors.FirstLine(ex)}";
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        // Leaving the page stops the crawl; wait for it so the port is released before anything else can reopen it.
+        session?.Cancel();
+        if (runTask is not null)
+        {
+            await runTask;
+        }
+    }
 }

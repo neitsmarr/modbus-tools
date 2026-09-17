@@ -1,0 +1,195 @@
+<fieldset disabled="@Disabled">
+    <div class="row g-3">
+        <div class="col-lg-6">
+            <div class="card h-100">
+                <div class="card-header">Port &amp; serial settings</div>
+                <div class="card-body">
+                    <SerialSettingsFields Model="Model" IdPrefix="crawl" SelectedPort="SelectedPort" SelectedPortChanged="SelectedPortChanged"
+                                          PreferredPortId="@PreferredPortId" Disabled="Disabled"
+                                          BaudRateError="@Validation.ErrorFor(nameof(CrawlFormModel.BaudRate))" OnChange="NotifyChangedAsync" />
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-6">
+            <div class="card h-100">
+                <div class="card-header">Slave &amp; tables</div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label class="form-label" for="crawl-slave-id">Slave ID</label>
+                        <input id="crawl-slave-id" class="form-control" type="number" min="@SlaveIdRange.FirstId" max="@SlaveIdRange.LastExtendedId"
+                               @bind="Model.SlaveId" @bind:after="NotifyChangedAsync" />
+                        @FieldError(nameof(CrawlFormModel.SlaveId))
+                        @if (Model.SlaveId > SlaveIdRange.LastStandardId)
+                        {
+                            <div class="form-text text-warning-emphasis">IDs above @SlaveIdRange.LastStandardId are reserved by the Modbus specification.</div>
+                        }
+                    </div>
+
+                    <span class="form-label d-block">Tables</span>
+                    @foreach (var table in CrawlTables.All)
+                    {
+                        var id = $"crawl-table-{table.GetShortName().ToLowerInvariant()}";
+                        <div class="form-check">
+                            <input id="@id" class="form-check-input" type="checkbox" checked="@Model.Tables.Contains(table)"
+                                   @onchange="e => OnTableChangedAsync(table, e)" />
+                            <label class="form-check-label" for="@id">
+                                @($"FC{(byte)table.GetFunctionCode():D2} {table.GetDisplayName()} ({table.GetShortName()})")
+                            </label>
+                        </div>
+                    }
+                    @FieldError(nameof(CrawlFormModel.Tables))
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-6">
+            <div class="card h-100">
+                <div class="card-header">Address range &amp; order</div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label class="form-label" for="crawl-range-preset">Address range</label>
+                        <select id="crawl-range-preset" class="form-select" @bind="Model.RangePreset" @bind:after="OnPresetChangedAsync">
+                            @foreach (var preset in Enum.GetValues<AddressRangePreset>())
+                            {
+                                <option value="@preset">@CrawlFormModel.GetPresetName(preset)</option>
+                            }
+                        </select>
+                    </div>
+
+                    @if (Model.RangePreset == AddressRangePreset.Custom)
+                    {
+                        <div class="row g-2 mb-3">
+                            <div class="col-6">
+                                <label class="form-label" for="crawl-from">From</label>
+                                <input id="crawl-from" class="form-control font-monospace" placeholder="0 or 0x0000"
+                                       @bind="Model.FromAddressText" @bind:event="oninput" @bind:after="NotifyChangedAsync" />
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label" for="crawl-to">To (inclusive)</label>
+                                <input id="crawl-to" class="form-control font-monospace" placeholder="999 or 0x03E7"
+                                       @bind="Model.ToAddressText" @bind:event="oninput" @bind:after="NotifyChangedAsync" />
+                            </div>
+                        </div>
+                    }
+                    @FieldError(nameof(AddressRange))
+
+                    <div>
+                        <label class="form-label" for="crawl-strategy">Order</label>
+                        <select id="crawl-strategy" class="form-select" @bind="Model.StrategyId" @bind:after="NotifyChangedAsync">
+                            @foreach (var strategy in CrawlStrategies.All)
+                            {
+                                <option value="@strategy.Id">@strategy.Name</option>
+                            }
+                        </select>
+                        @FieldError(nameof(CrawlFormModel.StrategyId))
+                        <div class="form-text">
+                            @(CrawlStrategies.Find(Model.StrategyId)?.Description)
+                            Addresses are data addresses (0-based), as sent in the request.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-6">
+            <div class="card h-100">
+                <div class="card-header">Timing</div>
+                <div class="card-body">
+                    <div class="row g-2">
+                        <div class="col-sm-4">
+                            <label class="form-label" for="crawl-timeout">Timeout (ms)</label>
+                            <input id="crawl-timeout" class="form-control" type="number" min="1" max="@ScanFormModel.MaxResponseTimeoutMs"
+                                   @bind="Model.ResponseTimeoutMs" @bind:after="NotifyChangedAsync" />
+                        </div>
+                        <div class="col-sm-4">
+                            <label class="form-label" for="crawl-delay">Delay (ms)</label>
+                            <input id="crawl-delay" class="form-control" type="number" min="0" max="@ScanFormModel.MaxInterRequestDelayMs"
+                                   title="Pause after each transaction before the next request"
+                                   @bind="Model.InterRequestDelayMs" @bind:after="NotifyChangedAsync" />
+                        </div>
+                        <div class="col-sm-4">
+                            <label class="form-label" for="crawl-frame-gap">Frame gap (ms)</label>
+                            <input id="crawl-frame-gap" class="form-control" type="number" min="0" step="0.1" max="@ScanFormModel.MaxFrameGapMs"
+                                   placeholder="@AutoFrameGapPlaceholder"
+                                   @bind="Model.FrameGapMs" @bind:after="NotifyChangedAsync" />
+                        </div>
+                    </div>
+                    @FieldError(nameof(CrawlFormModel.ResponseTimeoutMs))
+                    @FieldError(nameof(CrawlFormModel.InterRequestDelayMs))
+                    @FieldError(nameof(CrawlFormModel.FrameGapMs))
+                    <div class="form-text">
+                        Timeout is the wait for a reply to each request. Delay is the pause before the next request.
+                        Automatic frame gap uses max(t3.5, 20 ms).
+                    </div>
+
+                    @if (Validation.Options is CrawlOptions options)
+                    {
+                        <dl class="row mt-3 mb-0">
+                            <dt class="col-sm-5">Requests</dt>
+                            <dd class="col-sm-7">
+                                <strong>@CrawlFormatting.Requests(options.EstimateRequests())</strong>
+                                <span class="text-body-secondary">
+                                    (@options.Tables.Count table@(options.Tables.Count == 1 ? null : "s") × @CrawlFormatting.Count(options.Range.Count) addresses)
+                                </span>
+                            </dd>
+                            <dt class="col-sm-5">If nothing answers</dt>
+                            <dd class="col-sm-7 mb-0"><strong>~@ScanFormatting.Duration(options.EstimateWorstCaseDuration())</strong></dd>
+                        </dl>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+</fieldset>
+
+@code {
+    [Parameter, EditorRequired]
+    public CrawlFormModel Model { get; set; } = default!;
+
+    [Parameter, EditorRequired]
+    public CrawlFormValidation Validation { get; set; } = default!;
+
+    [Parameter]
+    public WebSerialPort? SelectedPort { get; set; }
+
+    [Parameter]
+    public EventCallback<WebSerialPort?> SelectedPortChanged { get; set; }
+
+    /// <inheritdoc cref="SerialPortSelector.PreferredPortId"/>
+    [Parameter]
+    public string? PreferredPortId { get; set; }
+
+    [Parameter]
+    public bool Disabled { get; set; }
+
+    /// <summary>Raised after any field changes, so the owner can revalidate.</summary>
+    [Parameter]
+    public EventCallback OnChange { get; set; }
+
+    private string AutoFrameGapPlaceholder => Validation.Serial is SerialSettings serial
+        ? $"auto ({ScanFormatting.Milliseconds(RtuTiming.DefaultFrameGap(serial))} ms)"
+        : "auto";
+
+    private Task NotifyChangedAsync() => OnChange.InvokeAsync();
+
+    private Task OnTableChangedAsync(CrawlTable table, ChangeEventArgs e)
+    {
+        Model.SetTableSelected(table, e.Value is true);
+        return NotifyChangedAsync();
+    }
+
+    private Task OnPresetChangedAsync()
+    {
+        Model.ApplyPreset();
+        return NotifyChangedAsync();
+    }
+
+    private RenderFragment FieldError(string field) => __builder =>
+    {
+        if (Validation.ErrorFor(field) is string message)
+        {
+            <div class="text-danger small mt-1">@message</div>
+        }
+    };
+}

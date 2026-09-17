@@ -1,0 +1,113 @@
+@{
+    var result = Session.Result;
+    var statistics = result.Statistics;
+    var options = Session.Options;
+}
+<div class="row g-3">
+    <div class="col-xl-6">
+        <div class="card h-100">
+            <div class="card-header">Valid ranges</div>
+            <div class="card-body">
+                <dl class="row mb-0">
+                    @foreach (var table in result.Tables)
+                    {
+                        <dt class="col-2 font-monospace" title="@table.Table.GetDisplayName()">@table.Table.GetShortName()</dt>
+                        <dd class="col-10">
+                            @if (table.CheckedCount == 0)
+                            {
+                                <span class="text-body-secondary">not checked</span>
+                            }
+                            else
+                            {
+                                <span class="font-monospace">@CrawlFormatting.Ranges(table.GetValidRanges())</span>
+                                <span class="text-body-secondary small ms-1">
+                                    (@CrawlFormatting.Count(table.CountOf(AddressStatus.Valid)) valid of @CrawlFormatting.Count(table.CheckedCount) checked)
+                                </span>
+                            }
+                        </dd>
+                    }
+                </dl>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-6">
+        <div class="card h-100">
+            <div class="card-header">Device facts &amp; statistics</div>
+            <div class="card-body">
+                <dl class="row mb-0 small">
+                    <dt class="col-sm-4">Tables</dt>
+                    <dd class="col-sm-8 d-flex flex-wrap gap-1">
+                        @foreach (var table in result.Tables)
+                        {
+                            <span class="badge @CrawlFormatting.SupportBadgeClass(table.Support) fw-normal">
+                                @table.Table.GetShortName(): @table.Support.GetDisplayName()
+                            </span>
+                        }
+                    </dd>
+
+                    <dt class="col-sm-4">Typical response</dt>
+                    <dd class="col-sm-8">
+                        @if (statistics.MedianResponseTime is TimeSpan median)
+                        {
+                            <span>
+                                ~@ScanFormatting.Milliseconds(median) ms median
+                                (@ScanFormatting.Milliseconds(statistics.FastestResponse)–@ScanFormatting.Milliseconds(statistics.SlowestResponse) ms,
+                                @CrawlFormatting.Count(statistics.ResponseTimeSamples) replies)
+                            </span>
+                        }
+                        else
+                        {
+                            <span class="text-body-secondary">no replies yet</span>
+                        }
+                    </dd>
+
+                    <dt class="col-sm-4">Max quantity per request</dt>
+                    <dd class="col-sm-8 text-body-secondary">Not measured: this crawl reads one address per request.</dd>
+
+                    <dt class="col-sm-4">Requests</dt>
+                    <dd class="col-sm-8">
+                        @CrawlFormatting.Count(statistics.Requests) sent:
+                        @CrawlFormatting.Count(statistics.CountOf(ProbeStatus.Ok)) OK,
+                        @CrawlFormatting.Count(statistics.Exceptions) exceptions@(ExceptionBreakdown(statistics)),
+                        @CrawlFormatting.Count(statistics.Timeouts) timeouts,
+                        @CrawlFormatting.Count(statistics.CommErrors) comm errors
+                    </dd>
+
+                    <dt class="col-sm-4">Crawl time</dt>
+                    <dd class="col-sm-8">
+                        @ScanFormatting.Duration(Session.ActiveTime) active
+                        @if (Session.StartedAt is DateTimeOffset started)
+                        {
+                            <span class="text-body-secondary">
+                                (started @started.ToLocalTime().ToString("T")@(Session.FinishedAt is DateTimeOffset finished ? $", finished {finished.ToLocalTime():T}" : null))
+                            </span>
+                        }
+                    </dd>
+
+                    <dt class="col-sm-4">Settings</dt>
+                    <dd class="col-sm-8 mb-0">
+                        @Session.PortName, @options.Serial, ID @options.SlaveId,
+                        addresses @CrawlFormatting.Range(options.Range), @options.Strategy.Name.ToLowerInvariant(),
+                        timeout @ScanFormatting.Milliseconds(options.ResponseTimeout) ms,
+                        delay @ScanFormatting.Milliseconds(options.InterRequestDelay) ms,
+                        frame gap @ScanFormatting.Milliseconds(options.EffectiveFrameGap) ms
+                    </dd>
+                </dl>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public CrawlSession Session { get; set; } = default!;
+
+    private static string? ExceptionBreakdown(CrawlStatistics statistics)
+    {
+        var counts = statistics.GetExceptionCounts();
+        return counts.Count == 0
+            ? null
+            : $" ({string.Join(", ", counts.Select(c => $"{c.Code:X2} ×{CrawlFormatting.Count(c.Count)}"))})";
+    }
+}

@@ -28,6 +28,13 @@ public sealed record ReadRegistersProbe : ProbeRequest
 
     public override string? ValidateResponsePdu(ReadOnlySpan<byte> pdu) => ValidateByteCountPayload(pdu, 2 * Quantity);
 
+    /// <summary>
+    /// Reads register <paramref name="index"/> (0 = the request's start address) from a complete response frame that
+    /// was classified OK: address, function code, byte count, big-endian register data, CRC.
+    /// </summary>
+    public static ushort GetRegister(ReadOnlySpan<byte> response, int index) =>
+        (ushort)((response[ResponseDataOffset + 2 * index] << 8) | response[ResponseDataOffset + 2 * index + 1]);
+
     protected override byte[] BuildPdu() =>
         [(byte)FunctionCode, (byte)(Address >> 8), (byte)Address, (byte)(Quantity >> 8), (byte)Quantity];
 

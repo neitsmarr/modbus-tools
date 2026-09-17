@@ -9,6 +9,9 @@ public abstract record ProbeRequest
     /// <summary>Address + function code + exception code + CRC.</summary>
     public const int ExceptionResponseLength = 5;
 
+    /// <summary>Offset of the first data byte in a "byte count + data" response frame: address, function code, byte count.</summary>
+    private protected const int ResponseDataOffset = 3;
+
     private protected ProbeRequest()
     {
     }

@@ -1,0 +1,47 @@
+.address-strip {
+    display: block;
+    width: 100%;
+    height: 1.5rem;
+    border-radius: 0.25rem;
+    background-color: var(--bs-tertiary-bg);
+}
+
+.legend-swatch {
+    display: inline-block;
+    width: 0.9rem;
+    height: 0.9rem;
+    margin-right: 0.3rem;
+    border-radius: 0.2rem;
+    vertical-align: -0.125rem;
+}
+
+.status-valid {
+    fill: #198754;
+    background-color: #198754;
+}
+
+.status-invalid {
+    fill: #adb5bd;
+    background-color: #adb5bd;
+}
+
+.status-exception {
+    fill: #0dcaf0;
+    background-color: #0dcaf0;
+}
+
+.status-noresponse {
+    fill: #ffc107;
+    background-color: #ffc107;
+}
+
+.status-commerror {
+    fill: #dc3545;
+    background-color: #dc3545;
+}
+
+.status-notchecked {
+    fill: #e9ecef;
+    background-color: #e9ecef;
+    box-shadow: inset 0 0 0 1px #dee2e6;
+}
