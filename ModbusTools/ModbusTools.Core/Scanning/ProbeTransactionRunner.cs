@@ -69,6 +69,7 @@ public sealed class ProbeTransactionRunner
         ArgumentNullException.ThrowIfNull(timing);
 
         var stale = await transport.DiscardInputAsync();
+        var lineErrorsBefore = transport.LineErrorCount;
 
         var request = probe.BuildFrame(slaveId);
         var startedAt = timeProvider.GetUtcNow();
@@ -109,6 +110,7 @@ public sealed class ProbeTransactionRunner
             Response = frame.Bytes,
             LateBytes = Concat(late, arrivedDuringDelay),
             StaleBytes = stale,
+            LineErrors = transport.LineErrorCount - lineErrorsBefore,
             ResponseTimeout = responseTimeout,
             ResponseTime = responseTime,
             RawResponseTime = rawResponseTime,

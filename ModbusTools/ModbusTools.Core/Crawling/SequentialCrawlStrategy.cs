@@ -1,3 +1,5 @@
+using ModbusTools.Core.Scanning;
+
 namespace ModbusTools.Core.Crawling;
 
 public enum CrawlDirection

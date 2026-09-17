@@ -27,6 +27,13 @@ public sealed record ProbeAttempt
     /// <summary>Bytes already waiting in the input buffer before the request was sent, discarded unread.</summary>
     public required ReadOnlyMemory<byte> StaleBytes { get; init; }
 
+    /// <summary>
+    /// Line errors the port reported while this transaction was running; see
+    /// <see cref="Transport.IModbusRtuTransport.LineErrorCount"/>. Normally zero, but frequent at a baud rate that
+    /// does not match the device.
+    /// </summary>
+    public int LineErrors { get; init; }
+
     public required TimeSpan ResponseTimeout { get; init; }
 
     /// <summary>

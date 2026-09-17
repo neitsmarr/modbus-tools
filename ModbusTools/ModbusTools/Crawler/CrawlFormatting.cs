@@ -1,5 +1,6 @@
 using System.Globalization;
 using ModbusTools.Core.Crawling;
+using ModbusTools.Core.Scanning;
 
 namespace ModbusTools.Crawler;
 

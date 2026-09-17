@@ -1,0 +1,165 @@
+@using System.Globalization
+
+<div class="d-flex flex-wrap gap-3 small mb-2" aria-hidden="true">
+    @foreach (var status in SweepFormatting.StatusOrder)
+    {
+        <span title="@status.GetExplanation()">
+            <span class="legend-swatch @SweepFormatting.ColorClass(status)"></span>@status.GetDisplayName()
+        </span>
+    }
+    <span title="Rates the port refused to open at"><span class="legend-swatch rate-refused"></span>Refused</span>
+    <span title="Where the share of answered requests crosses one half"><span class="legend-swatch legend-window"></span>Working window</span>
+    <span title="The middle of the window: the device's own baud rate"><span class="legend-swatch legend-center"></span>Device rate</span>
+</div>
+
+@if (Result.Rates.Count == 0)
+{
+    <p class="text-body-secondary mb-0">No rate has been tried yet.</p>
+}
+else
+{
+    var window = Result.GetWindow();
+    var barWidth = Math.Max(1.5, (PlotRight - PlotLeft) / Math.Max(Grid.Count, 1) * 0.85);
+
+    <svg class="sweep-chart" viewBox="0 0 @Svg(Width) @Svg(Height)" role="img" aria-label="@AriaLabel(window)">
+        @if (window is { Lower: BaudWindowEdge low, Upper: BaudWindowEdge high })
+        {
+            <rect class="window-band" x="@Svg(X(low.OffsetPercent))" y="@Svg(PlotTop)"
+                  width="@Svg(Math.Max(X(high.OffsetPercent) - X(low.OffsetPercent), 0))" height="@Svg(PlotBottom - PlotTop)">
+                <title>Working window @SweepFormatting.Baud(low.BaudRate)–@SweepFormatting.Baud(high.BaudRate) baud</title>
+            </rect>
+        }
+
+        @foreach (var tick in Ticks())
+        {
+            <g>
+                <line class="grid-line" x1="@Svg(X(tick))" y1="@Svg(PlotTop)" x2="@Svg(X(tick))" y2="@Svg(PlotBottom)" />
+                <text class="tick-label" x="@Svg(X(tick))" y="@Svg(PlotBottom + 16)" text-anchor="middle">@SweepFormatting.Signed(tick, 0)</text>
+                <text class="tick-sublabel" x="@Svg(X(tick))" y="@Svg(PlotBottom + 30)" text-anchor="middle">@SweepFormatting.Baud(Grid.ExpectedBaudRate * (1 + tick / 100))</text>
+            </g>
+        }
+
+        <line class="half-line" x1="@Svg(PlotLeft)" y1="@Svg(Y(0.5))" x2="@Svg(PlotRight)" y2="@Svg(Y(0.5))" />
+        <line class="axis-line" x1="@Svg(PlotLeft)" y1="@Svg(PlotBottom)" x2="@Svg(PlotRight)" y2="@Svg(PlotBottom)" />
+        <text class="tick-label" x="@Svg(PlotLeft - 6)" y="@Svg(Y(1) + 4)" text-anchor="end">100 %</text>
+        <text class="tick-label" x="@Svg(PlotLeft - 6)" y="@Svg(Y(0.5) + 4)" text-anchor="end">50 %</text>
+        <text class="tick-label" x="@Svg(PlotLeft - 6)" y="@Svg(Y(0) + 4)" text-anchor="end">0</text>
+
+        @foreach (var rate in Result.Rates)
+        {
+            var x = X(rate.OffsetPercent) - barWidth / 2;
+            if (rate.Requests > 0)
+            {
+                <g>
+                    <title>@Tooltip(rate)</title>
+                    @foreach (var segment in Segments(rate))
+                    {
+                        <rect class="@SweepFormatting.ColorClass(segment.Status)" x="@Svg(x)" y="@Svg(Y(segment.Top))"
+                              width="@Svg(barWidth)" height="@Svg(Y(segment.Bottom) - Y(segment.Top))" />
+                    }
+                </g>
+            }
+            else if (rate.IsPortRefused)
+            {
+                <rect class="rate-refused" x="@Svg(x)" y="@Svg(PlotBottom - 4)" width="@Svg(barWidth)" height="4">
+                    <title>@SweepFormatting.Baud(rate.BaudRate) baud (@SweepFormatting.Signed(rate.OffsetPercent)): @rate.PortError</title>
+                </rect>
+            }
+        }
+
+        <line class="expected-line" x1="@Svg(X(0))" y1="@Svg(PlotTop)" x2="@Svg(X(0))" y2="@Svg(PlotBottom + 4)">
+            <title>Expected @SweepFormatting.Baud(Grid.ExpectedBaudRate) baud</title>
+        </line>
+
+        @if (window.Lower is BaudWindowEdge lower)
+        {
+            @EdgeMark(lower, "lower edge")
+        }
+        @if (window.Upper is BaudWindowEdge upper)
+        {
+            @EdgeMark(upper, "upper edge")
+        }
+
+        @if (window.CenterBaudRate is double center && window.CenterOffsetPercent is double offset)
+        {
+            <g>
+                <line class="center-line" x1="@Svg(X(offset))" y1="@Svg(PlotTop)" x2="@Svg(X(offset))" y2="@Svg(PlotBottom)">
+                    <title>Device rate @SweepFormatting.Baud(center) baud (@SweepFormatting.Signed(offset))</title>
+                </line>
+                <text class="center-label" x="@Svg(Math.Clamp(X(offset), PlotLeft + 40, PlotRight - 40))" y="@Svg(PlotTop + 10)"
+                      text-anchor="middle">@SweepFormatting.Baud(center) (@SweepFormatting.Signed(offset, 1))</text>
+            </g>
+        }
+    </svg>
+}
+
+@code {
+    private const double Width = 760;
+    private const double Height = 250;
+    private const double PlotLeft = 46;
+    private const double PlotRight = 750;
+    private const double PlotTop = 14;
+    private const double PlotBottom = 202;
+
+    /// <summary>Tick spacings in percent, smallest first; the first that keeps the axis readable wins.</summary>
+    private static readonly double[] TickSteps = [0.1, 0.25, 0.5, 1, 2, 2.5, 5, 10, 20];
+
+    [Parameter, EditorRequired]
+    public BaudSweepResult Result { get; set; } = default!;
+
+    private BaudGrid Grid => Result.Grid;
+
+    /// <summary>SVG coordinates must not follow the user's locale, or a comma decimal separator breaks the path.</summary>
+    private static string Svg(double value) => value.ToString("0.##", CultureInfo.InvariantCulture);
+
+    private double X(double percent) =>
+        PlotLeft + (percent + Grid.SpanPercent) / (2 * Grid.SpanPercent) * (PlotRight - PlotLeft);
+
+    private static double Y(double share) => PlotBottom - share * (PlotBottom - PlotTop);
+
+    private IEnumerable<double> Ticks()
+    {
+        var step = TickSteps.FirstOrDefault(candidate => 2 * Grid.SpanPercent / candidate <= 10, TickSteps[^1]);
+        for (var tick = -Math.Floor(Grid.SpanPercent / step) * step; tick <= Grid.SpanPercent + 1e-9; tick += step)
+        {
+            yield return tick;
+        }
+    }
+
+    /// <summary>The bar's parts from the bottom up, as shares of the rate's requests.</summary>
+    private static IEnumerable<(ReplyStatus Status, double Bottom, double Top)> Segments(BaudRateResult rate)
+    {
+        var bottom = 0.0;
+        foreach (var status in SweepFormatting.StatusOrder)
+        {
+            var share = (double)rate.CountOf(status) / rate.Requests;
+            if (share > 0)
+            {
+                yield return (status, bottom, bottom + share);
+                bottom += share;
+            }
+        }
+    }
+
+    private static string Tooltip(BaudRateResult rate)
+    {
+        var parts = SweepFormatting.StatusOrder
+            .Where(status => rate.CountOf(status) > 0)
+            .Select(status => $"{status.GetDisplayName().ToLowerInvariant()} ×{rate.CountOf(status)}");
+        return $"{SweepFormatting.Baud(rate.BaudRate)} baud ({SweepFormatting.Signed(rate.OffsetPercent)}): " +
+               $"{string.Join(", ", parts)} of {rate.Requests} request(s)";
+    }
+
+    private string AriaLabel(BaudWindow window) => window.CenterBaudRate is double center
+        ? $"Replies by baud rate around {Grid.ExpectedBaudRate}; the device answers between " +
+          $"{window.Lower?.BaudRate:0} and {window.Upper?.BaudRate:0} baud, centred on {center:0}."
+        : $"Replies by baud rate around {Grid.ExpectedBaudRate} baud.";
+
+    private RenderFragment EdgeMark(BaudWindowEdge edge, string name) => __builder =>
+    {
+        <line class="edge-line" x1="@Svg(X(edge.OffsetPercent))" y1="@Svg(PlotTop)"
+              x2="@Svg(X(edge.OffsetPercent))" y2="@Svg(PlotBottom)">
+            <title>@($"{char.ToUpperInvariant(name[0])}{name[1..]} {SweepFormatting.Baud(edge.BaudRate)} baud ({SweepFormatting.Signed(edge.OffsetPercent)})")</title>
+        </line>
+    };
+}

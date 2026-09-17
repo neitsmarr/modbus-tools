@@ -1,0 +1,238 @@
+@page "/baud-sweep"
+@implements IAsyncDisposable
+@inject WebSerialService Serial
+@inject TimeProvider TimeProvider
+@inject BrowserFileDownloader Downloader
+
+<PageTitle>Baud Rate Sweep</PageTitle>
+
+<h1>Baud Rate Sweep</h1>
+
+<p>
+    Try the same request at rates a little either side of the one a device is set to, and see how far it can drift
+    before the device stops answering. The middle of the range that still works is the rate the device actually runs
+    at; the distance to its edges is the room left for clock drift.
+</p>
+
+@if (isSupported is null)
+{
+    <p><em>Checking Web Serial support...</em></p>
+}
+else if (isSupported == false)
+{
+    <div class="alert alert-warning" role="alert">
+        The Web Serial API is not available in this browser. Use a desktop Chromium-based browser
+        (Chrome, Edge or Opera) and open the app over HTTPS or on localhost.
+    </div>
+}
+else
+{
+    <SweepConfigForm Model="model" Validation="validation" Disabled="IsRunning" PreferredPortId="@Port"
+                     @bind-SelectedPort="selectedPort" OnChange="Revalidate" />
+
+    <div class="alert alert-warning py-2 mt-3 mb-0" role="note">
+        The rate asked for is not always the rate on the wire: adapters produce it from a divider, so they round, and
+        some only accept a fixed set of rates. Everything here is in terms of the requested rate.
+    </div>
+
+    <div class="d-flex flex-wrap align-items-center gap-2 my-3">
+        @if (!IsRunning)
+        {
+            <button type="button" class="btn btn-primary" @onclick="StartAsync" disabled="@(!CanStart)">Start sweep</button>
+            @if (selectedPort is null)
+            {
+                <span class="text-body-secondary">Select or add a serial port to start.</span>
+            }
+            else if (!validation.IsValid)
+            {
+                <span class="text-danger">Fix the highlighted settings to start.</span>
+            }
+        }
+        else
+        {
+            @if (session!.State == ScanSessionState.Paused)
+            {
+                <button type="button" class="btn btn-success" @onclick="session.Resume" disabled="@session.IsCancellationRequested">Resume</button>
+            }
+            else
+            {
+                <button type="button" class="btn btn-outline-secondary" @onclick="session.Pause" disabled="@session.IsCancellationRequested">Pause</button>
+            }
+
+            <button type="button" class="btn btn-outline-danger" @onclick="session.Cancel" disabled="@session.IsCancellationRequested">Cancel</button>
+            <span class="text-body-secondary small">Pause and cancel take effect after the current transaction.</span>
+        }
+    </div>
+
+    @if (session is not null)
+    {
+        <SweepProgressPanel Session="session" />
+
+        @if (session.Outcome == SweepOutcome.Failed && session.Error is not null)
+        {
+            <div class="alert alert-danger mt-3" role="alert">
+                Sweep failed: @JsErrors.FirstLine(session.Error)
+                The port was released; check the connection and try again. Results so far are kept below.
+            </div>
+        }
+
+        @foreach (var hint in SweepFormatting.GetHints(session.Result, session.Options))
+        {
+            <div class="alert alert-warning mt-3 mb-0" role="status">@hint</div>
+        }
+
+        <div class="card mt-3">
+            <div class="card-header">Replies by baud rate</div>
+            <div class="card-body">
+                <SweepChart Result="session.Result" />
+            </div>
+        </div>
+
+        <div class="mt-3">
+            <SweepSummary Session="session" />
+        </div>
+
+        <div class="card mt-3">
+            <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+                <span>Rates</span>
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-sm btn-outline-primary" @onclick="ExportCsvAsync" disabled="@(!CanExport)">Export CSV</button>
+                    <button type="button" class="btn btn-sm btn-outline-primary" @onclick="ExportJsonAsync" disabled="@(!CanExport)"
+                            title="Measured window, settings and every rate tried, for comparing runs later">
+                        Export JSON
+                    </button>
+                </div>
+            </div>
+            <div class="card-body">
+                @if (exportError is not null)
+                {
+                    <div class="alert alert-danger" role="alert">@exportError</div>
+                }
+
+                <SweepRatesTable Result="session.Result" />
+            </div>
+        </div>
+    }
+}
+
+@code {
+    // How often the page re-renders while a sweep runs; requests complete faster than they need to be drawn.
+    private static readonly TimeSpan RefreshInterval = TimeSpan.FromMilliseconds(150);
+
+    private readonly SweepFormModel model = new();
+    private SweepFormValidation validation = default!;
+    private bool? isSupported;
+    private WebSerialPort? selectedPort;
+    private BaudSweepSession? session;
+    private Task? runTask;
+    private string? exportError;
+
+    /// <summary>Port identifier as produced by the scanner, e.g. "0403:6001#1".</summary>
+    [SupplyParameterFromQuery]
+    public string? Port { get; set; }
+
+    [SupplyParameterFromQuery]
+    public int? Baud { get; set; }
+
+    [SupplyParameterFromQuery]
+    public int? DataBits { get; set; }
+
+    /// <summary>N, E or O.</summary>
+    [SupplyParameterFromQuery]
+    public string? Parity { get; set; }
+
+    [SupplyParameterFromQuery]
+    public int? StopBits { get; set; }
+
+    [SupplyParameterFromQuery]
+    public int? Id { get; set; }
+
+    private bool IsRunning => session is { State: not ScanSessionState.Finished };
+
+    private bool CanStart => !IsRunning && selectedPort is not null && validation.IsValid;
+
+    private bool CanExport => session is { State: ScanSessionState.Finished } && session.Result.Statistics.Requests > 0;
+
+    protected override void OnInitialized()
+    {
+        model.ApplyQuery(Baud, DataBits, Parity, StopBits, Id);
+        Revalidate();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        isSupported = await Serial.IsSupportedAsync();
+        StateHasChanged();
+    }
+
+    private void Revalidate() => validation = model.Validate();
+
+    private async Task StartAsync()
+    {
+        if (!CanStart || validation.Options is not BaudSweepOptions options)
+        {
+            return;
+        }
+
+        exportError = null;
+        var port = selectedPort!;
+        session = new BaudSweepSession(options, port.DisplayName, TimeProvider);
+        runTask = RunAsync(session, new WebSerialTransport(port, TimeProvider));
+        await runTask;
+    }
+
+    private async Task RunAsync(BaudSweepSession sweep, WebSerialTransport transport)
+    {
+        await using (transport)
+        {
+            var run = sweep.RunAsync(transport);
+            while (!run.IsCompleted)
+            {
+                await Task.WhenAny(run, Task.Delay(RefreshInterval, TimeProvider));
+                StateHasChanged();
+            }
+
+            await run;
+        }
+    }
+
+    private Task ExportCsvAsync() => ExportAsync("csv", "text/csv", BaudSweepReportExporter.ToCsv);
+
+    private Task ExportJsonAsync() => ExportAsync("json", "application/json", BaudSweepReportExporter.ToJson);
+
+    private async Task ExportAsync(string extension, string contentType, Func<BaudSweepReport, string> format)
+    {
+        if (session is null)
+        {
+            return;
+        }
+
+        exportError = null;
+        var report = session.CreateReport();
+        var timestamp = (report.StartedAt ?? TimeProvider.GetUtcNow()).ToLocalTime();
+        var fileName = $"baud-sweep-id{report.Options.SlaveId}-{report.Options.Serial.BaudRate}-{timestamp:yyyyMMdd-HHmmss}.{extension}";
+        try
+        {
+            await Downloader.DownloadAsync(fileName, contentType, Encoding.UTF8.GetBytes(format(report)));
+        }
+        catch (JSException ex)
+        {
+            exportError = $"Export failed: {JsErrors.FirstLine(ex)}";
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        // Leaving the page stops the sweep; wait for it so the port is released before anything else can reopen it.
+        session?.Cancel();
+        if (runTask is not null)
+        {
+            await runTask;
+        }
+    }
+}

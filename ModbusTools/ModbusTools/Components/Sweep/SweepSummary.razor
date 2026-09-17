@@ -1,0 +1,198 @@
+@{
+    var options = Session.Options;
+    var result = Session.Result;
+    var window = result.GetWindow();
+    var statistics = result.Statistics;
+    var deviceRate = window.EstimateDeviceRate(options.AdapterAccuracyPercent);
+}
+<div class="row g-3">
+    <div class="col-xl-6">
+        <div class="card h-100">
+            <div class="card-header d-flex justify-content-between align-items-center gap-2">
+                <span>Working window</span>
+                <span class="badge @StatusBadgeClass(window.Status) fw-normal">@StatusText(window.Status)</span>
+            </div>
+            <div class="card-body">
+                <dl class="row mb-0">
+                    <dt class="col-sm-5">Answers between</dt>
+                    <dd class="col-sm-7">
+                        @if (window is { Lower: BaudWindowEdge low, Upper: BaudWindowEdge high })
+                        {
+                            <strong>@SweepFormatting.Baud(low.BaudRate) – @SweepFormatting.Baud(high.BaudRate)</strong>
+                            <span> baud</span>
+                            <div class="text-body-secondary small">
+                                @SweepFormatting.Signed(low.OffsetPercent) … @SweepFormatting.Signed(high.OffsetPercent)
+                                of @SweepFormatting.Baud(options.Serial.BaudRate)
+                            </div>
+                        }
+                        else
+                        {
+                            <span class="text-body-secondary">not bracketed yet</span>
+                        }
+                    </dd>
+
+                    <dt class="col-sm-5" title="Half the width of the window: the mismatch this device and this port survive">
+                        Link tolerance
+                    </dt>
+                    <dd class="col-sm-7">
+                        @if (window.TolerancePercent is double tolerance)
+                        {
+                            <strong>±@SweepFormatting.Percent(tolerance)</strong>
+                        }
+                        else
+                        {
+                            <span class="text-body-secondary">–</span>
+                        }
+                    </dd>
+
+                    <dt class="col-sm-5" title="How far the rate can drift from the expected one before replies stop">
+                        Room for drift
+                    </dt>
+                    <dd class="col-sm-7">
+                        @if (window is { MarginDownPercent: double down, MarginUpPercent: double up })
+                        {
+                            <strong>@SweepFormatting.Percent(Math.Abs(down), 1) down, @SweepFormatting.Percent(Math.Abs(up), 1) up</strong>
+                            <div class="text-body-secondary small">
+                                @if (window.DriftMarginPercent is double margin and > 0)
+                                {
+                                    <span>@SweepFormatting.Percent(margin, 1) in the tighter direction.</span>
+                                }
+                                else
+                                {
+                                    <span>The expected rate is outside the window: the device is further off than it tolerates.</span>
+                                }
+                            </div>
+                        }
+                        else
+                        {
+                            <span class="text-body-secondary">–</span>
+                        }
+                    </dd>
+
+                    <dt class="col-sm-5" title="The middle of the window">Device baud rate</dt>
+                    <dd class="col-sm-7 mb-0">
+                        @if (window.CenterBaudRate is double center)
+                        {
+                            <strong>≈ @SweepFormatting.Baud(center)</strong>
+                            <span> baud (@SweepFormatting.Signed(window.CenterOffsetPercent))</span>
+                            @if (deviceRate is { } range)
+                            {
+                                <div class="text-body-secondary small">
+                                    @SweepFormatting.Baud(range.Low) – @SweepFormatting.Baud(range.High)
+                                    @if (options.AdapterAccuracyPercent is double accuracy)
+                                    {
+                                        <span>, with this port's clock within ±@SweepFormatting.Percent(accuracy)</span>
+                                    }
+                                    else
+                                    {
+                                        <span> at this step size; enter the port's clock accuracy for the true range</span>
+                                    }
+                                </div>
+                            }
+                        }
+                        else if (window.BestRate is int best)
+                        {
+                            <span class="text-body-secondary">Best rate tried: @SweepFormatting.Baud(best) baud</span>
+                        }
+                        else
+                        {
+                            <span class="text-body-secondary">–</span>
+                        }
+                    </dd>
+                </dl>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-6">
+        <div class="card h-100">
+            <div class="card-header">Requests &amp; settings</div>
+            <div class="card-body">
+                <dl class="row mb-0 small">
+                    <dt class="col-sm-4">Requests</dt>
+                    <dd class="col-sm-8">
+                        @SweepFormatting.Count(statistics.Requests) sent:
+                        @SweepFormatting.Count(statistics.CountOf(ReplyStatus.Answered)) answered,
+                        @SweepFormatting.Count(statistics.CountOf(ReplyStatus.BadReply)) bad replies,
+                        @SweepFormatting.Count(statistics.CountOf(ReplyStatus.NoReply)) no reply
+                        @if (statistics.LineErrors > 0)
+                        {
+                            <span class="text-body-secondary">(@SweepFormatting.Count(statistics.LineErrors) line errors)</span>
+                        }
+                    </dd>
+
+                    <dt class="col-sm-4">Rates</dt>
+                    <dd class="col-sm-8">
+                        @SweepFormatting.Count(window.TestedRates) tried,
+                        @SweepFormatting.Count(window.WorkingRates) answering
+                        @if (window.RefusedRates > 0)
+                        {
+                            <span>, @SweepFormatting.Count(window.RefusedRates) refused by the port</span>
+                        }
+                    </dd>
+
+                    <dt class="col-sm-4">Typical response</dt>
+                    <dd class="col-sm-8">
+                        @if (statistics.AverageResponseTime is TimeSpan average)
+                        {
+                            <span>
+                                ~@ScanFormatting.Milliseconds(average) ms average
+                                (@ScanFormatting.Milliseconds(statistics.FastestResponse)–@ScanFormatting.Milliseconds(statistics.SlowestResponse) ms,
+                                @SweepFormatting.Count(statistics.ResponseTimeSamples) replies)
+                            </span>
+                        }
+                        else
+                        {
+                            <span class="text-body-secondary">no replies yet</span>
+                        }
+                    </dd>
+
+                    <dt class="col-sm-4">Sweep time</dt>
+                    <dd class="col-sm-8">
+                        @ScanFormatting.Duration(Session.ActiveTime) active
+                        @if (Session.StartedAt is DateTimeOffset started)
+                        {
+                            <span class="text-body-secondary">
+                                (started @started.ToLocalTime().ToString("T")@(Session.FinishedAt is DateTimeOffset finished ? $", finished {finished.ToLocalTime():T}" : null))
+                            </span>
+                        }
+                    </dd>
+
+                    <dt class="col-sm-4">Settings</dt>
+                    <dd class="col-sm-8 mb-0">
+                        @Session.PortName, @options.Serial, ID @options.SlaveId, @options.Probe.Description,
+                        @options.Strategy.Name.ToLowerInvariant(),
+                        ±@SweepFormatting.Percent(options.SpanPercent, 1) in @SweepFormatting.Percent(options.StepPercent, 2) steps,
+                        dead band @SweepFormatting.Percent(options.DeadBandPercent, 1),
+                        @options.RequestsPerRate request(s) per rate,
+                        timeout @ScanFormatting.Milliseconds(options.ResponseTimeout) ms,
+                        settle @ScanFormatting.Milliseconds(options.PortSettleDelay) ms
+                    </dd>
+                </dl>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public BaudSweepSession Session { get; set; } = default!;
+
+    private static string StatusText(BaudWindowStatus status) => status switch
+    {
+        BaudWindowStatus.Bounded => "Both edges found",
+        BaudWindowStatus.PartlyBounded => "One edge found",
+        BaudWindowStatus.Unbounded => "No edge found",
+        BaudWindowStatus.NoWorkingRate => "No working rate",
+        _ => "Nothing tried yet",
+    };
+
+    private static string StatusBadgeClass(BaudWindowStatus status) => status switch
+    {
+        BaudWindowStatus.Bounded => "text-bg-success",
+        BaudWindowStatus.PartlyBounded => "text-bg-warning",
+        BaudWindowStatus.Unbounded => "text-bg-warning",
+        BaudWindowStatus.NoWorkingRate => "text-bg-danger",
+        _ => "text-bg-light border",
+    };
+}

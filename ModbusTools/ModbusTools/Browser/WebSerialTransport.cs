@@ -29,6 +29,9 @@ public sealed class WebSerialTransport(WebSerialPort port, TimeProvider timeProv
 
     public bool IsOpen => reader is not null && writer is not null;
 
+    /// <inheritdoc />
+    public int LineErrorCount { get; private set; }
+
     public async ValueTask OpenAsync(SerialSettings settings, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(settings);
@@ -74,32 +77,61 @@ public sealed class WebSerialTransport(WebSerialPort port, TimeProvider timeProv
 
     public async ValueTask<ReadOnlyMemory<byte>> ReadAsync(TimeSpan timeout, CancellationToken cancellationToken = default)
     {
-        var activeReader = reader ?? throw new InvalidOperationException("The port is not open.");
-        pendingRead ??= activeReader.InvokeAsync<ReadResult>("read").AsTask();
+        var deadline = timeProvider.GetTimestamp() +
+            (long)(Math.Max(timeout.TotalSeconds, 0) * timeProvider.TimestampFrequency);
 
-        if (!pendingRead.IsCompleted)
+        while (true)
         {
-            using var delayCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            var delay = Task.Delay(timeout > TimeSpan.Zero ? timeout : TimeSpan.Zero, timeProvider, delayCancellation.Token);
-            var completed = await Task.WhenAny(pendingRead, delay);
-            await delayCancellation.CancelAsync();
-            if (completed != pendingRead)
+            var activeReader = reader ?? throw new InvalidOperationException("The port is not open.");
+            pendingRead ??= activeReader.InvokeAsync<ReadResult>("read").AsTask();
+
+            if (!pendingRead.IsCompleted)
             {
-                // Surfaces cancellation of the caller's token; otherwise the timeout simply elapsed.
-                cancellationToken.ThrowIfCancellationRequested();
-                return ReadOnlyMemory<byte>.Empty;
+                using var delayCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                var delay = Task.Delay(RemainingUntil(deadline), timeProvider, delayCancellation.Token);
+                var completed = await Task.WhenAny(pendingRead, delay);
+                await delayCancellation.CancelAsync();
+                if (completed != pendingRead)
+                {
+                    // Surfaces cancellation of the caller's token; otherwise the timeout simply elapsed.
+                    cancellationToken.ThrowIfCancellationRequested();
+                    return ReadOnlyMemory<byte>.Empty;
+                }
             }
-        }
 
-        var read = pendingRead;
-        pendingRead = null;
-        var result = await read;
-        if (result.Done)
-        {
-            throw new IOException("The serial port's input stream was closed.");
-        }
+            var read = pendingRead;
+            pendingRead = null;
+            ReadResult result;
+            try
+            {
+                result = await read;
+            }
+            catch (JSException ex)
+            {
+                // A line error (framing, parity, break, buffer overrun) errors the stream but leaves the port open;
+                // the browser replaces it with a fresh one. Keep waiting on that one for the rest of the timeout, so
+                // a garbled reply still ends up as received bytes rather than as a failed transport.
+                if (!await TryReplaceReaderAsync())
+                {
+                    throw new IOException($"The serial port's input stream failed: {JsErrors.FirstLine(ex)}", ex);
+                }
 
-        return result.Value ?? ReadOnlyMemory<byte>.Empty;
+                LineErrorCount++;
+                if (RemainingUntil(deadline) <= TimeSpan.Zero)
+                {
+                    return ReadOnlyMemory<byte>.Empty;
+                }
+
+                continue;
+            }
+
+            if (result.Done)
+            {
+                throw new IOException("The serial port's input stream was closed.");
+            }
+
+            return result.Value ?? ReadOnlyMemory<byte>.Empty;
+        }
     }
 
     public async ValueTask<ReadOnlyMemory<byte>> DiscardInputAsync(CancellationToken cancellationToken = default)
@@ -152,6 +184,43 @@ public sealed class WebSerialTransport(WebSerialPort port, TimeProvider timeProv
     }
 
     public ValueTask DisposeAsync() => CloseAsync();
+
+    /// <summary>
+    /// Takes a reader from the stream the browser puts in place of one that a non-fatal error killed. Returns false
+    /// when the port cannot be read any more, which is how a fatal error (an unplugged device) shows up; the caller
+    /// then reports the original error instead.
+    /// </summary>
+    private async ValueTask<bool> TryReplaceReaderAsync()
+    {
+        if (reader is not null)
+        {
+            await IgnoreJsErrorsAsync(() => reader.InvokeVoidAsync("releaseLock"));
+            await reader.DisposeAsync();
+            reader = null;
+        }
+
+        try
+        {
+            await using var readable = await port.Handle.GetValueAsync<IJSObjectReference?>("readable");
+            if (readable is null)
+            {
+                return false;
+            }
+
+            reader = await readable.InvokeAsync<IJSObjectReference>("getReader");
+            return true;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return false;
+        }
+    }
+
+    private TimeSpan RemainingUntil(long timestamp)
+    {
+        var now = timeProvider.GetTimestamp();
+        return now >= timestamp ? TimeSpan.Zero : timeProvider.GetElapsedTime(now, timestamp);
+    }
 
     private static async ValueTask IgnoreJsErrorsAsync(Func<ValueTask> action)
     {

@@ -10,6 +10,13 @@ public interface IModbusRtuTransport : IAsyncDisposable
 {
     bool IsOpen { get; }
 
+    /// <summary>
+    /// Non-fatal line errors (framing, parity, break, buffer overrun) reported since the port was opened. The bytes
+    /// they affected are lost, but the port stays usable, so they are counted rather than thrown: a probe that times
+    /// out with line errors means the device did answer and the answer could not be read.
+    /// </summary>
+    int LineErrorCount => 0;
+
     /// <summary>Opens the port with the given settings. Fails if it is already open.</summary>
     ValueTask OpenAsync(SerialSettings settings, CancellationToken cancellationToken = default);
 

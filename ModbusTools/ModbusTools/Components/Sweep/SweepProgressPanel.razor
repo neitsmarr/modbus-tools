@@ -1,0 +1,63 @@
+@{
+    var progress = Session.Progress;
+    var percent = progress.ExpectedRequests == 0 ? 0 : 100.0 * progress.Requests / progress.ExpectedRequests;
+}
+<div class="card">
+    <div class="card-body">
+        <div class="d-flex flex-wrap justify-content-between gap-2 mb-2">
+            <div>
+                <strong>@StateText</strong>
+                @if (Session.State != ScanSessionState.Finished && Session.CurrentBaudRate is int rate)
+                {
+                    <span class="ms-2">
+                        @SweepFormatting.Baud(rate) baud
+                        <span class="text-body-secondary">(@SweepFormatting.Signed(Session.Result.Grid.PercentOf(rate)))</span>
+                    </span>
+                }
+            </div>
+            <div class="text-body-secondary">
+                @CrawlFormatting.Requests(Session.EstimatedRequests) requests planned,
+                ~@ScanFormatting.Duration(Session.WorstCase) if nothing answers
+            </div>
+        </div>
+
+        <div class="progress mb-2" role="progressbar" aria-label="Sweep progress"
+             aria-valuenow="@progress.Requests" aria-valuemin="0" aria-valuemax="@progress.ExpectedRequests">
+            <div class="progress-bar @(Session.State == ScanSessionState.Running ? "progress-bar-striped progress-bar-animated" : null)"
+                 style="width: @percent.ToString("0.##", CultureInfo.InvariantCulture)%"></div>
+        </div>
+
+        <div class="d-flex flex-wrap gap-4">
+            <span>Requests <strong>@SweepFormatting.Count(progress.Requests) / @SweepFormatting.Count(progress.ExpectedRequests)</strong></span>
+            <span>Rates tried <strong>@SweepFormatting.Count(progress.TestedRates)</strong></span>
+            <span>Elapsed <strong>@ScanFormatting.Duration(Session.ActiveTime)</strong></span>
+            @if (Session.State != ScanSessionState.Finished)
+            {
+                <span>
+                    ETA <strong>@(progress.EstimatedRemaining is TimeSpan eta ? ScanFormatting.Duration(eta) : "–")</strong>
+                </span>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public BaudSweepSession Session { get; set; } = default!;
+
+    private string StateText => Session.State switch
+    {
+        ScanSessionState.Running when Session.IsCancellationRequested => "Cancelling after the current transaction…",
+        ScanSessionState.Running => "Sweeping",
+        ScanSessionState.Paused when Session.IsCancellationRequested => "Cancelling…",
+        ScanSessionState.Paused => "Paused",
+        ScanSessionState.Finished => Session.Outcome switch
+        {
+            SweepOutcome.Completed => "Completed",
+            SweepOutcome.Cancelled => "Cancelled",
+            SweepOutcome.Failed => "Failed",
+            _ => "Finished",
+        },
+        _ => "Starting",
+    };
+}

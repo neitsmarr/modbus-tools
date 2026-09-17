@@ -1,0 +1,61 @@
+@if (Result.Rates.Count == 0)
+{
+    <p class="text-body-secondary mb-0">Rates appear here as they are tried.</p>
+}
+else
+{
+    var window = Result.GetWindow();
+    <div class="table-responsive">
+        <table class="table table-sm table-hover align-middle mb-0">
+            <thead>
+                <tr>
+                    <th scope="col" class="text-end">Baud</th>
+                    <th scope="col" class="text-end">Offset</th>
+                    <th scope="col" class="text-end">Requests</th>
+                    <th scope="col" class="text-end">Answered</th>
+                    <th scope="col" class="text-end">Bad reply</th>
+                    <th scope="col" class="text-end">No reply</th>
+                    <th scope="col" class="text-end">Answered</th>
+                    <th scope="col" class="text-end">Response</th>
+                    <th scope="col">Note</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var rate in Result.Rates)
+                {
+                    <tr class="@(IsInWindow(window, rate) ? "table-success" : null)">
+                        <th scope="row" class="text-end font-monospace fw-normal">@SweepFormatting.Baud(rate.BaudRate)</th>
+                        <td class="text-end font-monospace">@SweepFormatting.Signed(rate.OffsetPercent)</td>
+                        <td class="text-end">@SweepFormatting.Count(rate.Requests)</td>
+                        <td class="text-end">@SweepFormatting.Count(rate.Answered)</td>
+                        <td class="text-end">@SweepFormatting.Count(rate.BadReplies)</td>
+                        <td class="text-end">@SweepFormatting.Count(rate.NoReplies)</td>
+                        <td class="text-end fw-semibold">@SweepFormatting.SuccessPercent(rate)</td>
+                        <td class="text-end">
+                            @(rate.AverageResponseTime is TimeSpan average ? $"{ScanFormatting.Milliseconds(average)} ms" : "–")
+                        </td>
+                        <td class="small text-body-secondary">
+                            @if (rate.PortError is string error)
+                            {
+                                <span class="text-danger">Port refused: @error</span>
+                            }
+                            else if (rate.LineErrors > 0)
+                            {
+                                <span>@SweepFormatting.Count(rate.LineErrors) line error(s)</span>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired]
+    public BaudSweepResult Result { get; set; } = default!;
+
+    private static bool IsInWindow(BaudWindow window, BaudRateResult rate) =>
+        window is { Lower: BaudWindowEdge low, Upper: BaudWindowEdge high } &&
+        rate.BaudRate >= low.BaudRate && rate.BaudRate <= high.BaudRate;
+}

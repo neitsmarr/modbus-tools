@@ -1,0 +1,227 @@
+@{
+    var strategy = BaudSweepStrategies.Find(Model.StrategyId);
+}
+<fieldset disabled="@Disabled">
+    <div class="row g-3">
+        <div class="col-lg-6">
+            <div class="card h-100">
+                <div class="card-header">Port &amp; serial settings</div>
+                <div class="card-body">
+                    <SerialSettingsFields Model="Model" IdPrefix="sweep" SelectedPort="SelectedPort" SelectedPortChanged="SelectedPortChanged"
+                                          PreferredPortId="@PreferredPortId" Disabled="Disabled"
+                                          BaudRateError="@Validation.ErrorFor(nameof(SweepFormModel.BaudRate))" OnChange="NotifyChangedAsync" />
+                    <div class="form-text">
+                        Baud is the rate the device is expected to use; the sweep is centred on it. The frame format
+                        stays the same throughout, and the result only applies to it: 11-bit characters (8E1, 8N2)
+                        tolerate slightly less drift than 10-bit ones (8N1).
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-6">
+            <div class="card h-100">
+                <div class="card-header">Slave &amp; request</div>
+                <div class="card-body">
+                    <div class="row g-2">
+                        <div class="col-sm-4">
+                            <label class="form-label" for="sweep-slave-id">Slave ID</label>
+                            <input id="sweep-slave-id" class="form-control" type="number" min="@SlaveIdRange.FirstId" max="@SlaveIdRange.LastExtendedId"
+                                   @bind="Model.SlaveId" @bind:after="NotifyChangedAsync" />
+                        </div>
+                        <div class="col-sm-8">
+                            <label class="form-label" for="sweep-function">Request</label>
+                            <select id="sweep-function" class="form-select" @bind="Model.FunctionCode" @bind:after="NotifyChangedAsync">
+                                @foreach (var function in ReadFunctionCodes)
+                                {
+                                    <option value="@function">@($"FC{(byte)function:D2} {FunctionCodes.GetName(function)}")</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-sm-4">
+                            <label class="form-label" for="sweep-address">Address</label>
+                            <input id="sweep-address" class="form-control font-monospace" placeholder="0 or 0x0000"
+                                   @bind="Model.AddressText" @bind:event="oninput" @bind:after="NotifyChangedAsync" />
+                        </div>
+                        <div class="col-sm-4">
+                            <label class="form-label" for="sweep-quantity">Quantity</label>
+                            <input id="sweep-quantity" class="form-control" type="number" min="1" max="@Model.MaxQuantity"
+                                   @bind="Model.Quantity" @bind:after="NotifyChangedAsync" />
+                        </div>
+                    </div>
+                    @FieldError(nameof(SweepFormModel.SlaveId))
+                    @FieldError(nameof(SweepFormModel.AddressText))
+                    @FieldError(nameof(SweepFormModel.Quantity))
+                    <div class="form-text">
+                        Any valid reply counts as success, including an exception, so the address need not exist. A
+                        larger quantity means a longer reply, which sharpens the edges and slows each request down.
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-6">
+            <div class="card h-100">
+                <div class="card-header">Sweep</div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label class="form-label" for="sweep-strategy">Search method</label>
+                        <select id="sweep-strategy" class="form-select" @bind="Model.StrategyId" @bind:after="NotifyChangedAsync">
+                            @foreach (var option in BaudSweepStrategies.All)
+                            {
+                                <option value="@option.Id">@option.Name</option>
+                            }
+                        </select>
+                        @FieldError(nameof(SweepFormModel.StrategyId))
+                        <div class="form-text">@strategy?.Description</div>
+                    </div>
+
+                    <div class="row g-2">
+                        <div class="col-sm-3">
+                            <label class="form-label" for="sweep-span">Span (±%)</label>
+                            <input id="sweep-span" class="form-control" type="number" min="0.1" max="@BaudGrid.MaxSpanPercent" step="0.5"
+                                   title="How far from the expected rate the sweep may go"
+                                   @bind="Model.SpanPercent" @bind:after="NotifyChangedAsync" />
+                        </div>
+                        <div class="col-sm-3">
+                            <label class="form-label" for="sweep-step">Step (%)</label>
+                            <input id="sweep-step" class="form-control" type="number" min="@BaudGrid.MinStepPercent" step="0.05"
+                                   title="Distance between neighbouring rates"
+                                   @bind="Model.StepPercent" @bind:after="NotifyChangedAsync" />
+                        </div>
+                        <div class="col-sm-3">
+                            <label class="form-label" for="sweep-dead-band">Dead band (%)</label>
+                            <input id="sweep-dead-band" class="form-control" type="number" min="0.05" step="0.25"
+                                   title="How far past the last reply the sweep keeps going before it gives up on that direction"
+                                   @bind="Model.DeadBandPercent" @bind:after="NotifyChangedAsync" />
+                        </div>
+                        <div class="col-sm-3">
+                            <label class="form-label" for="sweep-requests">Requests</label>
+                            <input id="sweep-requests" class="form-control" type="number" min="1" max="@BaudSweepOptions.MaxRequestsPerRate"
+                                   title="Requests per rate" @bind="Model.RequestsPerRate" @bind:after="NotifyChangedAsync" />
+                        </div>
+                    </div>
+                    @FieldError(nameof(SweepFormModel.SpanPercent))
+                    @FieldError(nameof(SweepFormModel.StepPercent))
+                    @FieldError(nameof(SweepFormModel.DeadBandPercent))
+                    @FieldError(nameof(SweepFormModel.RequestsPerRate))
+                    <div class="form-text">Requests: @strategy?.RequestsNote</div>
+
+                    <div class="mt-3">
+                        <label class="form-label" for="sweep-accuracy">Port clock accuracy (±%, optional)</label>
+                        <input id="sweep-accuracy" class="form-control" type="number" min="0" max="@BaudSweepOptions.MaxAdapterAccuracyPercent" step="0.05"
+                               placeholder="unknown" @bind="Model.AdapterAccuracyPercent" @bind:after="NotifyChangedAsync" />
+                        @FieldError(nameof(SweepFormModel.AdapterAccuracyPercent))
+                        <div class="form-text">
+                            Everything is measured against this port's own clock, so its error carries straight over
+                            into the device's rate. It does not affect the window or the margins.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-6">
+            <div class="card h-100">
+                <div class="card-header">Timing</div>
+                <div class="card-body">
+                    <div class="row g-2">
+                        <div class="col-sm-3">
+                            <label class="form-label" for="sweep-timeout">Timeout (ms)</label>
+                            <input id="sweep-timeout" class="form-control" type="number" min="1" max="@ScanFormModel.MaxResponseTimeoutMs"
+                                   @bind="Model.ResponseTimeoutMs" @bind:after="NotifyChangedAsync" />
+                        </div>
+                        <div class="col-sm-3">
+                            <label class="form-label" for="sweep-delay">Delay (ms)</label>
+                            <input id="sweep-delay" class="form-control" type="number" min="0" max="@ScanFormModel.MaxInterRequestDelayMs"
+                                   title="Pause after each transaction before the next request"
+                                   @bind="Model.InterRequestDelayMs" @bind:after="NotifyChangedAsync" />
+                        </div>
+                        <div class="col-sm-3">
+                            <label class="form-label" for="sweep-frame-gap">Frame gap (ms)</label>
+                            <input id="sweep-frame-gap" class="form-control" type="number" min="0" step="0.1" max="@ScanFormModel.MaxFrameGapMs"
+                                   placeholder="@AutoFrameGapPlaceholder"
+                                   @bind="Model.FrameGapMs" @bind:after="NotifyChangedAsync" />
+                        </div>
+                        <div class="col-sm-3">
+                            <label class="form-label" for="sweep-settle">Settle (ms)</label>
+                            <input id="sweep-settle" class="form-control" type="number" min="0" max="@SweepFormModel.MaxPortSettleMs"
+                                   title="Silence after the port is reopened at a new rate, before the first request"
+                                   @bind="Model.PortSettleMs" @bind:after="NotifyChangedAsync" />
+                        </div>
+                    </div>
+                    @FieldError(nameof(SweepFormModel.ResponseTimeoutMs))
+                    @FieldError(nameof(SweepFormModel.InterRequestDelayMs))
+                    @FieldError(nameof(SweepFormModel.FrameGapMs))
+                    @FieldError(nameof(SweepFormModel.PortSettleMs))
+                    <div class="form-text">
+                        A serial port's rate cannot be changed while it is open, so every rate closes and reopens the
+                        port. Settle is the silence after that, which lets the device resynchronise.
+                    </div>
+
+                    @if (Validation.Options is BaudSweepOptions options)
+                    {
+                        <dl class="row mt-3 mb-0">
+                            <dt class="col-sm-5">Rates</dt>
+                            <dd class="col-sm-7">
+                                <strong>@SweepFormatting.Count(options.Grid.Count)</strong>
+                                <span class="text-body-secondary">
+                                    (@SweepFormatting.Baud(options.Grid.LowestBaudRate)–@SweepFormatting.Baud(options.Grid.HighestBaudRate) baud)
+                                </span>
+                            </dd>
+                            <dt class="col-sm-5">Requests</dt>
+                            <dd class="col-sm-7"><strong>@CrawlFormatting.Requests(options.EstimateRequests())</strong></dd>
+                            <dt class="col-sm-5">If nothing answers</dt>
+                            <dd class="col-sm-7 mb-0"><strong>~@ScanFormatting.Duration(options.EstimateWorstCaseDuration())</strong></dd>
+                        </dl>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+</fieldset>
+
+@code {
+    private static readonly FunctionCode[] ReadFunctionCodes =
+    [
+        FunctionCode.ReadHoldingRegisters, FunctionCode.ReadInputRegisters,
+        FunctionCode.ReadCoils, FunctionCode.ReadDiscreteInputs,
+    ];
+
+    [Parameter, EditorRequired]
+    public SweepFormModel Model { get; set; } = default!;
+
+    [Parameter, EditorRequired]
+    public SweepFormValidation Validation { get; set; } = default!;
+
+    [Parameter]
+    public WebSerialPort? SelectedPort { get; set; }
+
+    [Parameter]
+    public EventCallback<WebSerialPort?> SelectedPortChanged { get; set; }
+
+    /// <inheritdoc cref="SerialPortSelector.PreferredPortId"/>
+    [Parameter]
+    public string? PreferredPortId { get; set; }
+
+    [Parameter]
+    public bool Disabled { get; set; }
+
+    /// <summary>Raised after any field changes, so the owner can revalidate.</summary>
+    [Parameter]
+    public EventCallback OnChange { get; set; }
+
+    private string AutoFrameGapPlaceholder => Validation.Serial is SerialSettings serial
+        ? $"auto ({ScanFormatting.Milliseconds(RtuTiming.DefaultFrameGap(serial))} ms)"
+        : "auto";
+
+    private Task NotifyChangedAsync() => OnChange.InvokeAsync();
+
+    private RenderFragment FieldError(string field) => __builder =>
+    {
+        if (Validation.ErrorFor(field) is string message)
+        {
+            <div class="text-danger small mt-1">@message</div>
+        }
+    };
+}
