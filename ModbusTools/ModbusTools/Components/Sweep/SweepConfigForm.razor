@@ -90,9 +90,17 @@
                                    @bind="Model.StepPercent" @bind:after="NotifyChangedAsync" />
                         </div>
                         <div class="col-sm-3">
-                            <label class="form-label" for="sweep-dead-band">Dead band (%)</label>
+                            <div class="form-label d-flex align-items-baseline gap-1">
+                                @if (strategy?.DeadBandNote is not null)
+                                {
+                                    <input id="sweep-use-dead-band" class="form-check-input flex-shrink-0" type="checkbox" aria-label="Use the dead band"
+                                           @bind="Model.UseDeadBand" @bind:after="NotifyChangedAsync" />
+                                }
+                                <label for="sweep-dead-band">Dead band (%)</label>
+                            </div>
                             <input id="sweep-dead-band" class="form-control" type="number" min="0.05" step="0.25"
                                    title="How far past the last reply the sweep keeps going before it gives up on that direction"
+                                   disabled="@(strategy?.DeadBandNote is not null && !Model.UseDeadBand)"
                                    @bind="Model.DeadBandPercent" @bind:after="NotifyChangedAsync" />
                         </div>
                         <div class="col-sm-3">
@@ -106,6 +114,10 @@
                     @FieldError(nameof(SweepFormModel.DeadBandPercent))
                     @FieldError(nameof(SweepFormModel.RequestsPerRate))
                     <div class="form-text">Requests: @strategy?.RequestsNote</div>
+                    @if (strategy?.DeadBandNote is string deadBandNote)
+                    {
+                        <div class="form-text">Dead band: @deadBandNote</div>
+                    }
 
                     @if (strategy?.VerifyEdgesNote is string verifyEdgesNote)
                     {

@@ -41,6 +41,9 @@ public sealed class SweepFormModel : ISerialSettingsForm
 
     public double DeadBandPercent { get; set; } = BaudSweepOptions.DefaultDeadBandPercent;
 
+    /// <summary>Whether to use the dead band; only strategies for which it is optional let it be turned off.</summary>
+    public bool UseDeadBand { get; set; } = true;
+
     public int RequestsPerRate { get; set; } = BaudSweepOptions.DefaultRequestsPerRate;
 
     /// <summary>Whether to sweep the edges again; only used by strategies that verify edges.</summary>
@@ -135,6 +138,7 @@ public sealed class SweepFormModel : ISerialSettingsForm
                 SpanPercent = SpanPercent,
                 StepPercent = StepPercent,
                 DeadBandPercent = DeadBandPercent,
+                UseDeadBand = UseDeadBand || strategy!.DeadBandNote is null,
                 RequestsPerRate = RequestsPerRate,
                 VerifyEdgePasses = verifiesEdges ? VerifyEdgePasses : 0,
                 AdapterAccuracyPercent = AdapterAccuracyPercent,

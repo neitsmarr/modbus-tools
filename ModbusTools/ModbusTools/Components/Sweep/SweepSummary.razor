@@ -163,7 +163,7 @@
                         @Session.PortName, @options.Serial, ID @options.SlaveId, @options.Probe.Description,
                         @options.Strategy.Name.ToLowerInvariant(),
                         ±@SweepFormatting.Percent(options.SpanPercent, 1) in @SweepFormatting.Percent(options.StepPercent, 2) steps,
-                        dead band @SweepFormatting.Percent(options.DeadBandPercent, 1),
+                        @(options.UseDeadBand ? $"dead band {SweepFormatting.Percent(options.DeadBandPercent, 1)}" : "no dead band"),
                         @options.RequestsPerRate request(s) per rate,
                         @if (options.VerifyEdgePasses > 0)
                         {

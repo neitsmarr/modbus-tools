@@ -31,6 +31,12 @@ public interface IBaudSweepStrategy
     /// </summary>
     string? VerifyEdgesNote => null;
 
+    /// <summary>
+    /// What the dead band saves for this strategy, for the form's hint, when <see cref="BaudSweepOptions.UseDeadBand"/>
+    /// can turn it off; null when the strategy cannot do without it or does not use it.
+    /// </summary>
+    string? DeadBandNote => null;
+
     /// <summary>Fewest and most requests the strategy can send.</summary>
     RequestEstimate EstimateRequests(BaudSweepOptions options);
 

@@ -79,6 +79,12 @@ public sealed record BaudSweepOptions
         }
     } = DefaultDeadBandPercent;
 
+    /// <summary>
+    /// Whether a strategy with a <see cref="IBaudSweepStrategy.DeadBandNote"/> uses the dead band; the others always
+    /// do, or never.
+    /// </summary>
+    public bool UseDeadBand { get; init; } = true;
+
     /// <summary>Requests each rate gets; how they are spread over the sweep is up to the strategy.</summary>
     public int RequestsPerRate
     {
