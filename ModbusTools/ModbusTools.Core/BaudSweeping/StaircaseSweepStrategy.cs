@@ -51,7 +51,7 @@ public sealed class StaircaseSweepStrategy : IBaudSweepStrategy
         return new RequestEstimate(2 * reversals, 2 * RequestBudgetPerReversal * reversals);
     }
 
-    public IBaudSweepPlanner CreatePlanner(BaudSweepOptions options)
+    public IBaudSweepPlanner CreatePlanner(BaudSweepOptions options, BaudSweepResult results)
     {
         ArgumentNullException.ThrowIfNull(options);
         return new Planner(options);

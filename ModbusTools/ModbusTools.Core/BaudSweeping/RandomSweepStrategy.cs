@@ -40,7 +40,7 @@ public sealed class RandomSweepStrategy : IBaudSweepStrategy
         return new RequestEstimate(options.RequestsPerRate * smallest, options.RequestsPerRate * options.Grid.Count);
     }
 
-    public IBaudSweepPlanner CreatePlanner(BaudSweepOptions options)
+    public IBaudSweepPlanner CreatePlanner(BaudSweepOptions options, BaudSweepResult results)
     {
         ArgumentNullException.ThrowIfNull(options);
         return new Planner(options);

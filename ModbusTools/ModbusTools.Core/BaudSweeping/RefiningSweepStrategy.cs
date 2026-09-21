@@ -46,7 +46,7 @@ public sealed class RefiningSweepStrategy : IBaudSweepStrategy
         return new RequestEstimate(options.RequestsPerRate * 3, options.RequestsPerRate * rates);
     }
 
-    public IBaudSweepPlanner CreatePlanner(BaudSweepOptions options)
+    public IBaudSweepPlanner CreatePlanner(BaudSweepOptions options, BaudSweepResult results)
     {
         ArgumentNullException.ThrowIfNull(options);
         return new Planner(options);

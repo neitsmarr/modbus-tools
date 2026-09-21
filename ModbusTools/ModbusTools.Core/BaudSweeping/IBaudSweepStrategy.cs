@@ -25,10 +25,18 @@ public interface IBaudSweepStrategy
     /// <summary>What <see cref="BaudSweepOptions.RequestsPerRate"/> means for this strategy, for the form's hint.</summary>
     string RequestsNote { get; }
 
+    /// <summary>
+    /// What <see cref="BaudSweepOptions.VerifyEdgePasses"/> means for this strategy, for the form's hint; null when the
+    /// strategy does not verify edges and the setting does not apply.
+    /// </summary>
+    string? VerifyEdgesNote => null;
+
     /// <summary>Fewest and most requests the strategy can send.</summary>
     RequestEstimate EstimateRequests(BaudSweepOptions options);
 
-    IBaudSweepPlanner CreatePlanner(BaudSweepOptions options);
+    /// <param name="options">The sweep's settings.</param>
+    /// <param name="results">The run's results as they are recorded, for planners that plan from the whole picture.</param>
+    IBaudSweepPlanner CreatePlanner(BaudSweepOptions options, BaudSweepResult results);
 }
 
 /// <summary>Plans the rates of one sweep; created per run by <see cref="IBaudSweepStrategy.CreatePlanner"/>.</summary>

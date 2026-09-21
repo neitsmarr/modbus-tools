@@ -43,6 +43,12 @@ public sealed class SweepFormModel : ISerialSettingsForm
 
     public int RequestsPerRate { get; set; } = BaudSweepOptions.DefaultRequestsPerRate;
 
+    /// <summary>Whether to sweep the edges again; only used by strategies that verify edges.</summary>
+    public bool VerifyEdges { get; set; } = true;
+
+    /// <summary>How many times each edge is swept again when <see cref="VerifyEdges"/> is on.</summary>
+    public int VerifyEdgePasses { get; set; } = BaudSweepOptions.DefaultVerifyEdgePasses;
+
     /// <summary>Known error of the port's own clock, in percent; empty when unknown.</summary>
     public double? AdapterAccuracyPercent { get; set; }
 
@@ -109,6 +115,12 @@ public sealed class SweepFormModel : ISerialSettingsForm
         }
 
         var grid = ValidateGrid(serial, errors);
+        var verifiesEdges = VerifyEdges && strategy?.VerifyEdgesNote is not null;
+        if (verifiesEdges && VerifyEdgePasses is < 1 or > BaudSweepOptions.MaxVerifyEdgePasses)
+        {
+            errors[nameof(VerifyEdgePasses)] = $"Edge passes must be between 1 and {BaudSweepOptions.MaxVerifyEdgePasses}.";
+        }
+
         ValidateTiming(errors);
 
         BaudSweepOptions? options = null;
@@ -124,6 +136,7 @@ public sealed class SweepFormModel : ISerialSettingsForm
                 StepPercent = StepPercent,
                 DeadBandPercent = DeadBandPercent,
                 RequestsPerRate = RequestsPerRate,
+                VerifyEdgePasses = verifiesEdges ? VerifyEdgePasses : 0,
                 AdapterAccuracyPercent = AdapterAccuracyPercent,
                 ResponseTimeout = TimeSpan.FromMilliseconds(ResponseTimeoutMs),
                 InterRequestDelay = TimeSpan.FromMilliseconds(InterRequestDelayMs),

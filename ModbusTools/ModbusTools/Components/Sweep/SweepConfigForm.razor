@@ -107,6 +107,27 @@
                     @FieldError(nameof(SweepFormModel.RequestsPerRate))
                     <div class="form-text">Requests: @strategy?.RequestsNote</div>
 
+                    @if (strategy?.VerifyEdgesNote is string verifyEdgesNote)
+                    {
+                        <div class="row g-2 mt-1">
+                            <div class="col-sm-6">
+                                <label class="form-label" for="sweep-verify-edges">Verify edges</label>
+                                <div class="input-group">
+                                    <div class="input-group-text">
+                                        <input id="sweep-verify-edges" class="form-check-input mt-0" type="checkbox"
+                                               @bind="Model.VerifyEdges" @bind:after="NotifyChangedAsync" />
+                                    </div>
+                                    <input id="sweep-verify-passes" class="form-control" type="number" min="1" max="@BaudSweepOptions.MaxVerifyEdgePasses"
+                                           aria-label="Edge passes" title="How many times each edge is swept again" disabled="@(!Model.VerifyEdges)"
+                                           @bind="Model.VerifyEdgePasses" @bind:after="NotifyChangedAsync" />
+                                    <span class="input-group-text">pass(es)</span>
+                                </div>
+                            </div>
+                        </div>
+                        @FieldError(nameof(SweepFormModel.VerifyEdgePasses))
+                        <div class="form-text">Verify edges: @verifyEdgesNote</div>
+                    }
+
                     <div class="mt-3">
                         <label class="form-label" for="sweep-accuracy">Port clock accuracy (±%, optional)</label>
                         <input id="sweep-accuracy" class="form-control" type="number" min="0" max="@BaudSweepOptions.MaxAdapterAccuracyPercent" step="0.05"

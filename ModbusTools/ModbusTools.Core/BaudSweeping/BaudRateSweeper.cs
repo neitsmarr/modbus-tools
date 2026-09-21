@@ -52,7 +52,7 @@ public sealed class BaudRateSweeper
             throw new InvalidOperationException("The transport must be closed: a sweep opens the port at each rate itself.");
         }
 
-        var planner = options.Strategy.CreatePlanner(options);
+        var planner = options.Strategy.CreatePlanner(options, result);
         var refusals = 0;
 
         while (true)

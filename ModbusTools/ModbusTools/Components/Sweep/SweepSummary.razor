@@ -165,6 +165,10 @@
                         ±@SweepFormatting.Percent(options.SpanPercent, 1) in @SweepFormatting.Percent(options.StepPercent, 2) steps,
                         dead band @SweepFormatting.Percent(options.DeadBandPercent, 1),
                         @options.RequestsPerRate request(s) per rate,
+                        @if (options.VerifyEdgePasses > 0)
+                        {
+                            @($"{options.VerifyEdgePasses} edge pass(es), ")
+                        }
                         timeout @ScanFormatting.Milliseconds(options.ResponseTimeout) ms,
                         settle @ScanFormatting.Milliseconds(options.PortSettleDelay) ms
                     </dd>
