@@ -6,7 +6,7 @@ public static class BaudSweepStrategies
     public static IReadOnlyList<IBaudSweepStrategy> All { get; } =
     [
         CenterOutSweepStrategy.Instance,
-        RefiningSweepStrategy.Instance,
+        BisectSweepStrategy.Instance,
         StaircaseSweepStrategy.Instance,
         RandomSweepStrategy.Instance,
     ];
