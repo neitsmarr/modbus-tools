@@ -16,11 +16,11 @@ public sealed class SweepFormModel : ISerialSettingsForm
     public const int MaxPortSettleMs = 10_000;
 
     /// <summary>The expected baud rate: the middle of the sweep.</summary>
-    public int BaudRate { get; set; } = 9600;
+    public int BaudRate { get; set; } = 19200;
 
     public int DataBits { get; set; } = 8;
 
-    public Parity Parity { get; set; } = Parity.None;
+    public Parity Parity { get; set; } = Parity.Even;
 
     public StopBits StopBits { get; set; } = StopBits.One;
 
