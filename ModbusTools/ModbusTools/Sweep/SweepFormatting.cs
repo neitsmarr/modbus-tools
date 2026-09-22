@@ -44,6 +44,24 @@ public static class SweepFormatting
         ? value.ToString($"0.{new string('0', decimals)}", CultureInfo.CurrentCulture) + " %"
         : "–";
 
+    /// <summary>
+    /// What the edge passes found at one edge, e.g. "moved 0.20 % inwards"; "unchanged" when it did not move.
+    /// </summary>
+    public static string EdgeCheckText(BaudEdgeCheck check)
+    {
+        ArgumentNullException.ThrowIfNull(check);
+        if (check.LargestMove is not BaudEdgeShift shift)
+        {
+            return "unchanged";
+        }
+
+        var direction = shift.ShiftPercent < 0 ? "inwards" : "outwards";
+        var atLeast = shift.PastCheckedRates ? "at least " : null;
+        return $"moved {atLeast}{Percent(Math.Abs(shift.ShiftPercent))} {direction}";
+    }
+
+    public static string EdgeName(BaudEdgeSide side) => side == BaudEdgeSide.Lower ? "Lower edge" : "Upper edge";
+
     public static string SuccessPercent(BaudRateResult rate) =>
         rate.Requests == 0 ? "–" : (rate.SuccessRate * 100).ToString("0", CultureInfo.CurrentCulture) + " %";
 
@@ -118,6 +136,17 @@ public static class SweepFormatting
             case BaudWindowStatus.PartlyBounded:
                 hints.Add($"Only the {(window.Lower is null ? "upper" : "lower")} edge was found. Widen the span to reach the other one.");
                 break;
+        }
+
+        var moved = result.GetEdgeChecks().Where(check => check.Moved).ToList();
+        if (moved.Count > 0)
+        {
+            var changes = string.Join(
+                " and ", moved.Select(check => $"the {EdgeName(check.Side).ToLowerInvariant()} {EdgeCheckText(check)}"));
+            hints.Add(
+                $"Between the outward sweep and the edge passes, {changes}. The device's clock or the port's drifted " +
+                "while the sweep ran - often while a device warms up - so the window blends before and after. " +
+                "Sweep again once it has settled.");
         }
     }
 

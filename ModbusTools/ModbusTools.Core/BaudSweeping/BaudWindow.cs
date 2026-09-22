@@ -102,7 +102,7 @@ public sealed record BaudWindow
     public static BaudWindow Analyse(BaudSweepResult result)
     {
         ArgumentNullException.ThrowIfNull(result);
-        var points = result.Rates.Where(rate => rate.Requests > 0).ToArray();
+        var points = RateVotes.PerRate(result.Rates.Select(rate => rate.Votes));
         var common = new BaudWindow
         {
             Grid = result.Grid,
@@ -141,10 +141,10 @@ public sealed record BaudWindow
     }
 
     /// <summary>The rate with the highest share of replies; ties go to the one closest to the expected rate.</summary>
-    private static int BestIndex(BaudRateResult[] points, int expectedBaudRate)
+    internal static int BestIndex(IReadOnlyList<RateVotes> points, int expectedBaudRate)
     {
         var best = 0;
-        for (var i = 1; i < points.Length; i++)
+        for (var i = 1; i < points.Count; i++)
         {
             var difference = points[i].SuccessRate - points[best].SuccessRate;
             if (difference > 0 || (difference == 0 &&
@@ -161,9 +161,9 @@ public sealed record BaudWindow
     /// Walks out from the best rate until a rate fails, and returns where the reply share crossed one half between
     /// the two. Null when the walk runs out of results, i.e. the edge is beyond what was swept.
     /// </summary>
-    private static BaudWindowEdge? FindEdge(BaudRateResult[] points, int from, int direction, BaudGrid grid)
+    internal static BaudWindowEdge? FindEdge(IReadOnlyList<RateVotes> points, int from, int direction, BaudGrid grid)
     {
-        for (var i = from + direction; i >= 0 && i < points.Length; i += direction)
+        for (var i = from + direction; i >= 0 && i < points.Count; i += direction)
         {
             if (points[i].IsWorking)
             {

@@ -130,6 +130,15 @@ public static class BaudSweepReportExporter
                 window.TestedRates,
                 window.RefusedRates,
                 RoundMilliseconds(statistics.AverageResponseTime)),
+            report.Result.GetEdgeChecks().Select(check => new SweepEdgeCheckDocument(
+                check.Side.ToString(),
+                Math.Round(check.Outward.OffsetPercent, 4),
+                check.Moved,
+                check.Passes.Select(shift => new SweepEdgeShiftDocument(
+                    shift.Pass,
+                    Math.Round(shift.ShiftPercent, 4),
+                    shift.PastCheckedRates,
+                    shift.Moved)).ToArray())).ToArray(),
             report.Result.Rates.Select(rate => new SweepRateDocument(
                 rate.BaudRate,
                 Math.Round(rate.OffsetPercent, 4),
@@ -154,6 +163,9 @@ public static class BaudSweepReportExporter
         var window = report.Result.GetWindow();
         var statistics = report.Result.Statistics;
         var deviceRate = window.EstimateDeviceRate(options.AdapterAccuracyPercent);
+        var checks = report.Result.GetEdgeChecks();
+        var lowerCheck = checks.FirstOrDefault(check => check.Side == BaudEdgeSide.Lower);
+        var upperCheck = checks.FirstOrDefault(check => check.Side == BaudEdgeSide.Upper);
 
         return new List<(string Name, string Value)>
         {
@@ -200,6 +212,10 @@ public static class BaudSweepReportExporter
             ("margin_up_percent", Number(window.MarginUpPercent)),
             ("device_baud_rate_low", Number(deviceRate?.Low)),
             ("device_baud_rate_high", Number(deviceRate?.High)),
+            ("lower_edge_moved", lowerCheck is null ? string.Empty : lowerCheck.Moved ? "yes" : "no"),
+            ("lower_edge_shift_percent", Number(lowerCheck?.LargestMove?.ShiftPercent)),
+            ("upper_edge_moved", upperCheck is null ? string.Empty : upperCheck.Moved ? "yes" : "no"),
+            ("upper_edge_shift_percent", Number(upperCheck?.LargestMove?.ShiftPercent)),
         };
     }
 
@@ -230,6 +246,7 @@ internal sealed record BaudSweepDocument(
     SweepSettingsDocument Settings,
     SweepWindowDocument Window,
     SweepStatisticsDocument Statistics,
+    IReadOnlyList<SweepEdgeCheckDocument> EdgeChecks,
     IReadOnlyList<SweepRateDocument> Rates);
 
 internal sealed record SweepSourceDocument(
@@ -285,6 +302,16 @@ internal sealed record SweepStatisticsDocument(
     int RatesTested,
     int RatesRefused,
     double? AverageResponseTimeMs);
+
+/// <param name="Moved">Whether any edge pass moved the edge by more than chance explains.</param>
+internal sealed record SweepEdgeCheckDocument(
+    string Side,
+    double OutwardOffsetPercent,
+    bool Moved,
+    IReadOnlyList<SweepEdgeShiftDocument> Passes);
+
+/// <param name="ShiftPercent">Positive outwards, negative inwards; a lower bound when PastCheckedRates is set.</param>
+internal sealed record SweepEdgeShiftDocument(int Pass, double ShiftPercent, bool PastCheckedRates, bool Moved);
 
 internal sealed record SweepRateDocument(
     int BaudRate,

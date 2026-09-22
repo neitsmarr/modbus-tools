@@ -78,6 +78,7 @@ public sealed class BaudRateSweeper
             if (await TryOpenAsync(serial, cancellationToken) is string openError)
             {
                 result.RecordPortError(step.BaudRate, openError);
+                result.RecordVisit(new BaudVisit(step, 0, 0));
                 planner.OnCompleted(new BaudSweepStepResult(step, 0, rate));
                 yield return new BaudRateRefusedEvent(step.BaudRate, openError);
                 yield return new BaudRateCompletedEvent(
@@ -127,6 +128,7 @@ public sealed class BaudRateSweeper
                 await transport.CloseAsync();
             }
 
+            result.RecordVisit(new BaudVisit(step, step.Requests, answered));
             planner.OnCompleted(new BaudSweepStepResult(step, answered, rate));
             var visit = timeProvider.GetElapsedTime(visitStarted) - paused;
             yield return new BaudRateCompletedEvent(step.BaudRate, step.Requests, visit, planner.ExpectedRequests);

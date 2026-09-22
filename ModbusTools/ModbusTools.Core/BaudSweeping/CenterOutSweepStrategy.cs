@@ -18,6 +18,7 @@ namespace ModbusTools.Core.BaudSweeping;
 /// to the line. What it gives up is time: requests in one visit see the same conditions, so near an edge they tend to
 /// agree with each other. The edge passes put that back where it matters. Each sweeps from half a dead band below an
 /// edge to half a dead band above it, as the results stand when the pass starts, so it follows an edge that has moved.
+/// Every visit is labelled with its pass, so <see cref="BaudEdgeCheck"/> can compare each pass with the outward sweep.
 /// </para>
 /// </remarks>
 public sealed class CenterOutSweepStrategy : IBaudSweepStrategy
@@ -54,12 +55,15 @@ public sealed class CenterOutSweepStrategy : IBaudSweepStrategy
         // Best case: nothing answers, so the sweep stops one dead band out on both sides and has no edge to verify.
         // Worst case: the whole grid, then both edges on every edge pass.
         var shortestSweep = Math.Min(1 + 2 * options.DeadBandSteps, options.Grid.Count);
-        var edgePass = Math.Min(2 * (options.DeadBandSteps + 1), options.Grid.Count);
-        var mostVisits = options.Grid.Count + options.VerifyEdgePasses * edgePass;
+        var mostVisits = options.Grid.Count + options.VerifyEdgePasses * MostEdgePassRates(options);
         return new BaudSweepEstimate(
             new RequestEstimate(options.RequestsPerRate * shortestSweep, options.RequestsPerRate * mostVisits),
             mostVisits);
     }
+
+    /// <summary>Most rates one edge pass can cover: a dead band around each of the two edges.</summary>
+    private static int MostEdgePassRates(BaudSweepOptions options) =>
+        Math.Min(2 * (options.DeadBandSteps + 1), options.Grid.Count);
 
     public IBaudSweepPlanner CreatePlanner(BaudSweepOptions options, BaudSweepResult results)
     {
@@ -72,7 +76,7 @@ public sealed class CenterOutSweepStrategy : IBaudSweepStrategy
     {
         private readonly BaudGrid grid = options.Grid;
         private readonly int deadBandSteps = options.DeadBandSteps;
-        private readonly Queue<int> edgePass = [];
+        private readonly Queue<(int Index, BaudEdgeSide Side)> edgePass = [];
 
         private bool centerDone;
         private int step = 1;
@@ -81,13 +85,23 @@ public sealed class CenterOutSweepStrategy : IBaudSweepStrategy
         private int deadRunHigh;
         private bool lowClosed;
         private bool highClosed;
+        private int lowReach;
+        private int highReach;
         private bool outwardDone;
         private int edgePassesStarted;
         private int pending;
         private int requestsPlanned;
+        private int? expectedWithEdgePasses;
 
-        /// <summary>Known once the edge passes start; assumes the ones still to come cover as many rates as this one.</summary>
-        public int? ExpectedRequests { get; private set; }
+        /// <summary>
+        /// During the outward sweep, assumes every side still open is about to reach its edge - it still needs a dead
+        /// band of rates without a reply, or the rest of the span if that is shorter - and that the edge passes then
+        /// cover both edges. Once they start, the passes still to come are assumed to cover as many rates as this one.
+        /// </summary>
+        public int? ExpectedRequests => outwardDone
+            ? expectedWithEdgePasses
+            : requestsPlanned +
+              (OutwardRatesLeft() + options.VerifyEdgePasses * MostEdgePassRates(options)) * options.RequestsPerRate;
 
         public BaudSweepStep? Next()
         {
@@ -106,7 +120,8 @@ public sealed class CenterOutSweepStrategy : IBaudSweepStrategy
                 return null;
             }
 
-            return Take(edgePass.Dequeue());
+            var (next, side) = edgePass.Dequeue();
+            return Take(next, new BaudEdgePass(edgePassesStarted, side));
         }
 
         public void OnCompleted(BaudSweepStepResult result)
@@ -131,12 +146,27 @@ public sealed class CenterOutSweepStrategy : IBaudSweepStrategy
             }
         }
 
-        private BaudSweepStep Take(int index)
+        private BaudSweepStep Take(int index, BaudEdgePass? pass = null)
         {
             pending = index;
             requestsPlanned += options.RequestsPerRate;
-            return new BaudSweepStep(grid.RateAt(index), options.RequestsPerRate);
+            if (pass is null)
+            {
+                highReach = Math.Max(highReach, index);
+                lowReach = Math.Max(lowReach, -index);
+            }
+
+            return new BaudSweepStep(grid.RateAt(index), options.RequestsPerRate, pass);
         }
+
+        private int OutwardRatesLeft() =>
+            RatesLeft(lowClosed, deadRunLow, lowReach) + RatesLeft(highClosed, deadRunHigh, highReach);
+
+        /// <summary>
+        /// The fewest rates a side still has to visit: the rest of its dead band, unless the span ends first.
+        /// </summary>
+        private int RatesLeft(bool closed, int deadRun, int reach) =>
+            closed ? 0 : Math.Min(deadBandSteps - deadRun, grid.MaxIndex - reach);
 
         /// <summary>Walks outward: the expected rate first, then +1, -1, +2, -2 and so on, skipping closed sides.</summary>
         private bool TryTakeIndex(out int index)
@@ -185,23 +215,26 @@ public sealed class CenterOutSweepStrategy : IBaudSweepStrategy
         {
             if (edgePassesStarted >= options.VerifyEdgePasses)
             {
+                expectedWithEdgePasses ??= requestsPlanned;
                 return false;
             }
 
+            // Each edge is checked on its own, even where a narrow window makes the two ranges overlap, so every pass
+            // has a complete set of votes for each edge.
             var window = results.GetWindow();
-
-            // A window narrower than the dead band puts both edges' rates on the same steps.
-            var rates = EdgeRates(window.Lower).Concat(EdgeRates(window.Upper)).Distinct().ToList();
+            var rates = EdgeRates(window.Lower).Select(index => (index, BaudEdgeSide.Lower))
+                .Concat(EdgeRates(window.Upper).Select(index => (index, BaudEdgeSide.Upper)))
+                .ToList();
             if (rates.Count == 0)
             {
-                ExpectedRequests = requestsPlanned;
+                expectedWithEdgePasses = requestsPlanned;
                 return false;
             }
 
             edgePassesStarted++;
             rates.ForEach(edgePass.Enqueue);
             var passesLeft = options.VerifyEdgePasses - edgePassesStarted + 1;
-            ExpectedRequests = requestsPlanned + passesLeft * rates.Count * options.RequestsPerRate;
+            expectedWithEdgePasses = requestsPlanned + passesLeft * rates.Count * options.RequestsPerRate;
             return true;
         }
 

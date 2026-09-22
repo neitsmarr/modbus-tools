@@ -76,7 +76,8 @@ public readonly record struct BaudSweepEstimate(RequestEstimate Requests, int Ma
 
 /// <param name="BaudRate">The rate to open the port at.</param>
 /// <param name="Requests">Requests to send at that rate before moving on.</param>
-public readonly record struct BaudSweepStep(int BaudRate, int Requests);
+/// <param name="EdgePass">The edge pass this visit belongs to; null for the sweep proper.</param>
+public readonly record struct BaudSweepStep(int BaudRate, int Requests, BaudEdgePass? EdgePass = null);
 
 /// <param name="Step">The step that was carried out.</param>
 /// <param name="Answered">Requests answered during this visit.</param>
