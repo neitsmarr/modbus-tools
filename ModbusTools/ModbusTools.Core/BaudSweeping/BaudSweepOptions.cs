@@ -12,8 +12,6 @@ public sealed record BaudSweepOptions
     public const double DefaultDeadBandPercent = 1;
     public const int DefaultRequestsPerRate = 10;
     public const int MaxRequestsPerRate = 100;
-    public const int DefaultVerifyEdgePasses = 1;
-    public const int MaxVerifyEdgePasses = 100;
     public const double MaxAdapterAccuracyPercent = 10;
 
     /// <summary>Silence after the port is opened at a new rate, before the first request is sent.</summary>
@@ -66,8 +64,7 @@ public sealed record BaudSweepOptions
     } = DefaultStepPercent;
 
     /// <summary>
-    /// How far past the last reply a sweep keeps going before it gives up on that direction, in percent. It is also
-    /// the width of the edge passes.
+    /// How far past the last reply a sweep keeps going before it gives up on that direction, in percent.
     /// </summary>
     public double DeadBandPercent
     {
@@ -96,22 +93,6 @@ public sealed record BaudSweepOptions
             field = value;
         }
     } = DefaultRequestsPerRate;
-
-    /// <summary>
-    /// Times each edge is swept again once the sweep proper is done, from half a dead band below it to half a dead
-    /// band above it, to check that it has not moved in the meantime. Only strategies with a
-    /// <see cref="IBaudSweepStrategy.VerifyEdgesNote"/> use it.
-    /// </summary>
-    public int VerifyEdgePasses
-    {
-        get;
-        init
-        {
-            ArgumentOutOfRangeException.ThrowIfNegative(value);
-            ArgumentOutOfRangeException.ThrowIfGreaterThan(value, MaxVerifyEdgePasses);
-            field = value;
-        }
-    } = DefaultVerifyEdgePasses;
 
     /// <summary>
     /// Known error of the port's own clock, in percent, used to turn the measured middle of the window into a range

@@ -42,13 +42,14 @@ public sealed class BaudRateResult
 
     public bool IsPortRefused => PortError is not null;
 
-    /// <summary>Every request sent at this rate over the whole sweep, as votes.</summary>
-    public RateVotes Votes => new(BaudRate, Answered, Requests);
+    public double SuccessRate => Requests == 0 ? 0 : (double)Answered / Requests;
 
-    public double SuccessRate => Votes.SuccessRate;
-
-    /// <inheritdoc cref="RateVotes.IsWorking"/>
-    public bool IsWorking => Votes.IsWorking;
+    /// <summary>
+    /// Whether the link works here, by majority vote over every request sent at this rate, a tie counting as working.
+    /// Half the requests is the threshold because near an edge the outcome depends on the bits in each frame, so
+    /// rates there answer some of the time; the edge is where that crosses one in two.
+    /// </summary>
+    public bool IsWorking => Requests > 0 && Answered * 2 >= Requests;
 
     public TimeSpan? AverageResponseTime =>
         responseTimeSamples == 0 ? null : responseTimeTotal / responseTimeSamples;
@@ -70,25 +71,4 @@ public sealed class BaudRateResult
 
     /// <summary>Records that the port could not be opened at this rate. Keeps the first error; rates are retried.</summary>
     public void RecordPortError(string message) => PortError ??= message;
-}
-
-/// <summary>Replies at one rate, however they were gathered: a rate's totals, or one pass's visits to it.</summary>
-public readonly record struct RateVotes(int BaudRate, int Answered, int Requests)
-{
-    public double SuccessRate => Requests == 0 ? 0 : (double)Answered / Requests;
-
-    /// <summary>
-    /// Whether the link works here, by majority vote over the requests, a tie counting as working. Half the requests
-    /// is the threshold because near an edge the outcome depends on the bits in each frame, so rates there answer
-    /// some of the time; the edge is where that crosses one in two.
-    /// </summary>
-    public bool IsWorking => Requests > 0 && Answered * 2 >= Requests;
-
-    /// <summary>Adds up the votes per rate, in ascending rate order; rates without requests are left out.</summary>
-    public static RateVotes[] PerRate(IEnumerable<RateVotes> votes) => votes
-        .Where(vote => vote.Requests > 0)
-        .GroupBy(vote => vote.BaudRate)
-        .Select(rate => new RateVotes(rate.Key, rate.Sum(vote => vote.Answered), rate.Sum(vote => vote.Requests)))
-        .OrderBy(rate => rate.BaudRate)
-        .ToArray();
 }

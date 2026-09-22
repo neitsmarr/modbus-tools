@@ -7,12 +7,9 @@ namespace ModbusTools.Core.BaudSweeping;
 public sealed class BaudSweepResult
 {
     private readonly SortedDictionary<int, BaudRateResult> rates = [];
-    private readonly List<BaudVisit> visits = [];
 
     private int windowVersion = -1;
     private BaudWindow? window;
-    private int edgeChecksVersion = -1;
-    private IReadOnlyList<BaudEdgeCheck>? edgeChecks;
 
     public BaudSweepResult(BaudGrid grid)
     {
@@ -28,9 +25,6 @@ public sealed class BaudSweepResult
     public IReadOnlyCollection<BaudRateResult> Rates => rates.Values;
 
     public BaudSweepStatistics Statistics { get; } = new();
-
-    /// <summary>Every rate visit in order, so passes over the same rates can be told apart.</summary>
-    public IReadOnlyList<BaudVisit> Visits => visits;
 
     /// <summary>Rates that have had at least one request.</summary>
     public int TestedRates => rates.Values.Count(rate => rate.Requests > 0);
@@ -66,14 +60,6 @@ public sealed class BaudSweepResult
         Version++;
     }
 
-    /// <summary>Records a finished visit; its requests are recorded one by one with <see cref="Record"/>.</summary>
-    public void RecordVisit(BaudVisit visit)
-    {
-        ArgumentNullException.ThrowIfNull(visit);
-        visits.Add(visit);
-        Version++;
-    }
-
     /// <summary>The working window as the results stand; recomputed only after new results.</summary>
     public BaudWindow GetWindow()
     {
@@ -85,25 +71,6 @@ public sealed class BaudSweepResult
 
         return window;
     }
-
-    /// <summary>What the edge passes say about each edge; recomputed only after new results.</summary>
-    public IReadOnlyList<BaudEdgeCheck> GetEdgeChecks()
-    {
-        if (edgeChecksVersion != Version || edgeChecks is null)
-        {
-            edgeChecks = BaudEdgeCheck.Analyse(this);
-            edgeChecksVersion = Version;
-        }
-
-        return edgeChecks;
-    }
-}
-
-/// <summary>One visit to one rate: the step as planned, and what its requests achieved.</summary>
-/// <param name="Requests">Requests sent; none when the port refused the rate.</param>
-public sealed record BaudVisit(BaudSweepStep Step, int Requests, int Answered)
-{
-    public RateVotes Votes => new(Step.BaudRate, Answered, Requests);
 }
 
 /// <summary>Counters over every request a sweep sent, whatever rate it was sent at.</summary>

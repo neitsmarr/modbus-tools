@@ -26,12 +26,6 @@ public interface IBaudSweepStrategy
     string RequestsNote { get; }
 
     /// <summary>
-    /// What <see cref="BaudSweepOptions.VerifyEdgePasses"/> means for this strategy, for the form's hint; null when the
-    /// strategy does not verify edges and the setting does not apply.
-    /// </summary>
-    string? VerifyEdgesNote => null;
-
-    /// <summary>
     /// What the dead band saves for this strategy, for the form's hint, when <see cref="BaudSweepOptions.UseDeadBand"/>
     /// can turn it off; null when the strategy cannot do without it or does not use it.
     /// </summary>
@@ -46,9 +40,7 @@ public interface IBaudSweepStrategy
     /// <summary>Fewest and most requests the strategy can send, and the most rate visits it can make.</summary>
     BaudSweepEstimate Estimate(BaudSweepOptions options);
 
-    /// <param name="options">The sweep's settings.</param>
-    /// <param name="results">The run's results as they are recorded, for planners that plan from the whole picture.</param>
-    IBaudSweepPlanner CreatePlanner(BaudSweepOptions options, BaudSweepResult results);
+    IBaudSweepPlanner CreatePlanner(BaudSweepOptions options);
 }
 
 /// <summary>Plans the rates of one sweep; created per run by <see cref="IBaudSweepStrategy.CreatePlanner"/>.</summary>
@@ -76,8 +68,7 @@ public readonly record struct BaudSweepEstimate(RequestEstimate Requests, int Ma
 
 /// <param name="BaudRate">The rate to open the port at.</param>
 /// <param name="Requests">Requests to send at that rate before moving on.</param>
-/// <param name="EdgePass">The edge pass this visit belongs to; null for the sweep proper.</param>
-public readonly record struct BaudSweepStep(int BaudRate, int Requests, BaudEdgePass? EdgePass = null);
+public readonly record struct BaudSweepStep(int BaudRate, int Requests);
 
 /// <param name="Step">The step that was carried out.</param>
 /// <param name="Answered">Requests answered during this visit.</param>

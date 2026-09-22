@@ -51,7 +51,7 @@ public sealed class RandomSweepStrategy : IBaudSweepStrategy
             options.Grid.Count);
     }
 
-    public IBaudSweepPlanner CreatePlanner(BaudSweepOptions options, BaudSweepResult results)
+    public IBaudSweepPlanner CreatePlanner(BaudSweepOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
         return new Planner(options);

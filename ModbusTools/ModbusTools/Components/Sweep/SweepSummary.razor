@@ -31,27 +31,6 @@
                         }
                     </dd>
 
-                    @if (result.GetEdgeChecks() is { Count: > 0 } checks)
-                    {
-                        <dt class="col-sm-5" title="Each edge pass's replies compared with the outward sweep's, rate by rate">
-                            Edges re-checked
-                        </dt>
-                        <dd class="col-sm-7">
-                            @foreach (var check in checks)
-                            {
-                                <div>
-                                    @SweepFormatting.EdgeName(check.Side):
-                                    <strong class="@(check.Moved ? "text-danger" : null)">@SweepFormatting.EdgeCheckText(check)</strong>
-                                </div>
-                            }
-                            <div class="text-body-secondary small">
-                                @SweepFormatting.Count(checks.Max(check => check.Passes.Count)) edge pass(es) against the outward
-                                sweep; a move counts when chance is ruled out at
-                                @SweepFormatting.Percent(100 * (1 - BaudEdgeCheck.SignificanceLevel), 0) confidence
-                            </div>
-                        </dd>
-                    }
-
                     <dt class="col-sm-5" title="Half the width of the window: the mismatch this device and this port survive">
                         Link tolerance
                     </dt>
@@ -186,10 +165,6 @@
                         ±@SweepFormatting.Percent(options.SpanPercent, 1) in @SweepFormatting.Percent(options.StepPercent, 2) steps,
                         @(options.UseDeadBand ? $"dead band {SweepFormatting.Percent(options.DeadBandPercent, 1)}" : "no dead band"),
                         @options.RequestsPerRate request(s) per rate,
-                        @if (options.VerifyEdgePasses > 0)
-                        {
-                            @($"{options.VerifyEdgePasses} edge pass(es), ")
-                        }
                         timeout @ScanFormatting.Milliseconds(options.ResponseTimeout) ms,
                         settle @ScanFormatting.Milliseconds(options.PortSettleDelay) ms
                     </dd>
