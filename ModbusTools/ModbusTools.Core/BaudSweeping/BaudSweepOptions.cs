@@ -67,7 +67,7 @@ public sealed record BaudSweepOptions
 
     /// <summary>
     /// How far past the last reply a sweep keeps going before it gives up on that direction, in percent. It is also
-    /// the first step of the staircase and the width of the edge passes.
+    /// the width of the edge passes.
     /// </summary>
     public double DeadBandPercent
     {

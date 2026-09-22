@@ -34,6 +34,9 @@ public sealed class RandomSweepStrategy : IBaudSweepStrategy
 
     public string RequestsNote => "Requests sent at each rate in one visit; the rates are visited in random order.";
 
+    public string NothingAnsweredNote =>
+        "random order searches the whole span, so a device it has not found by the end is outside it. Widen the span.";
+
     public string DeadBandNote =>
         "Once something has answered, only rates within one dead band of the outermost reply are visited. " +
         "Unchecked, every rate in the span is.";

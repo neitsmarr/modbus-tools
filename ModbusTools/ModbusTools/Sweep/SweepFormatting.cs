@@ -65,8 +65,7 @@ public static class SweepFormatting
             case BaudWindowStatus.NoWorkingRate:
                 hints.Add(
                     "Nothing answered. Check the slave ID, the frame format and the wiring - or the expected rate " +
-                    "itself: the sweep stops one dead band past the last reply, so a device more than that far off " +
-                    "is never reached. Random order searches the whole span instead and does find it.");
+                    "itself: " + options.Strategy.NothingAnsweredNote);
                 break;
             case BaudWindowStatus.Unbounded when window.TestedRates >= options.Grid.Count:
                 hints.Add(

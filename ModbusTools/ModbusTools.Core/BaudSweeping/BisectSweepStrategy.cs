@@ -32,6 +32,10 @@ public sealed class BisectSweepStrategy : IBaudSweepStrategy
         "and fewest port reopenings, but it only tests what it needs, so the chart stays sparse. Needs the expected " +
         "rate itself to answer.";
 
+    public string NothingAnsweredNote =>
+        "bisection starts from it and stops when it does not answer. Outward, step by step searches one dead band " +
+        "either side of it, and Random order the whole span.";
+
     public string RequestsNote => "Requests sent at each rate it visits, all in one go, before it decides.";
 
     public BaudSweepEstimate Estimate(BaudSweepOptions options)

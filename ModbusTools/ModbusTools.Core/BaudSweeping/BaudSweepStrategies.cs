@@ -7,7 +7,6 @@ public static class BaudSweepStrategies
     [
         CenterOutSweepStrategy.Instance,
         BisectSweepStrategy.Instance,
-        StaircaseSweepStrategy.Instance,
         RandomSweepStrategy.Instance,
     ];
 

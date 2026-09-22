@@ -39,6 +39,10 @@ public sealed class CenterOutSweepStrategy : IBaudSweepStrategy
 
     public string RequestsNote => "Requests sent at each rate in one visit, and again at every rate an edge pass covers.";
 
+    public string NothingAnsweredNote =>
+        "the outward sweep gives up one dead band either side of it, so a device further off is never reached. " +
+        "Random order searches the whole span.";
+
     public string VerifyEdgesNote =>
         "After the outward sweep, sweeps each edge again from half a dead band below it to half a dead band above " +
         "it, to check that it has not moved since.";

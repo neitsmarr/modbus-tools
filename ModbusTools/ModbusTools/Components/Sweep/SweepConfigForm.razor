@@ -113,7 +113,10 @@
                     @FieldError(nameof(SweepFormModel.StepPercent))
                     @FieldError(nameof(SweepFormModel.DeadBandPercent))
                     @FieldError(nameof(SweepFormModel.RequestsPerRate))
-                    <div class="form-text">Requests: @strategy?.RequestsNote</div>
+                    <div class="form-text">
+                        Requests: @strategy?.RequestsNote A rate counts as working when at least half of its requests
+                        are answered - a majority vote, with a tie counting as working.
+                    </div>
                     @if (strategy?.DeadBandNote is string deadBandNote)
                     {
                         <div class="form-text">Dead band: @deadBandNote</div>

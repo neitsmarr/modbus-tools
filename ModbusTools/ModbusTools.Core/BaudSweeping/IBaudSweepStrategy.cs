@@ -37,6 +37,12 @@ public interface IBaudSweepStrategy
     /// </summary>
     string? DeadBandNote => null;
 
+    /// <summary>
+    /// Ends the hint shown when nothing answered, after "... or the expected rate itself:" - how far this strategy
+    /// searched, and which one searches further.
+    /// </summary>
+    string NothingAnsweredNote { get; }
+
     /// <summary>Fewest and most requests the strategy can send, and the most rate visits it can make.</summary>
     BaudSweepEstimate Estimate(BaudSweepOptions options);
 
