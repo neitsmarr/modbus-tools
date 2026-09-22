@@ -203,9 +203,9 @@
                                 </span>
                             </dd>
                             <dt class="col-sm-5">Requests</dt>
-                            <dd class="col-sm-7"><strong>@CrawlFormatting.Requests(options.EstimateRequests())</strong></dd>
-                            <dt class="col-sm-5">If nothing answers</dt>
-                            <dd class="col-sm-7 mb-0"><strong>~@ScanFormatting.Duration(options.EstimateWorstCaseDuration())</strong></dd>
+                            <dd class="col-sm-7"><strong>@CrawlFormatting.Requests(options.Estimate().Requests)</strong></dd>
+                            <dt class="col-sm-5" title="The most requests this method can send, all timing out">Longest possible</dt>
+                            <dd class="col-sm-7 mb-0"><strong>~@ScanFormatting.Duration(options.EstimateLongestDuration())</strong></dd>
                         </dl>
                     }
                 </div>

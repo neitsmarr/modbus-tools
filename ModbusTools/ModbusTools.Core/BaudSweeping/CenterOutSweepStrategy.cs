@@ -43,7 +43,7 @@ public sealed class CenterOutSweepStrategy : IBaudSweepStrategy
         "After the outward sweep, sweeps each edge again from half a dead band below it to half a dead band above " +
         "it, to check that it has not moved since.";
 
-    public RequestEstimate EstimateRequests(BaudSweepOptions options)
+    public BaudSweepEstimate Estimate(BaudSweepOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
 
@@ -51,8 +51,10 @@ public sealed class CenterOutSweepStrategy : IBaudSweepStrategy
         // Worst case: the whole grid, then both edges on every edge pass.
         var shortestSweep = Math.Min(1 + 2 * options.DeadBandSteps, options.Grid.Count);
         var edgePass = Math.Min(2 * (options.DeadBandSteps + 1), options.Grid.Count);
-        var mostRates = options.Grid.Count + options.VerifyEdgePasses * edgePass;
-        return new RequestEstimate(options.RequestsPerRate * shortestSweep, options.RequestsPerRate * mostRates);
+        var mostVisits = options.Grid.Count + options.VerifyEdgePasses * edgePass;
+        return new BaudSweepEstimate(
+            new RequestEstimate(options.RequestsPerRate * shortestSweep, options.RequestsPerRate * mostVisits),
+            mostVisits);
     }
 
     public IBaudSweepPlanner CreatePlanner(BaudSweepOptions options, BaudSweepResult results)

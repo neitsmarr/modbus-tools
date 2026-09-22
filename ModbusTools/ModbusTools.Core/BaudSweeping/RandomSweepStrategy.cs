@@ -38,12 +38,14 @@ public sealed class RandomSweepStrategy : IBaudSweepStrategy
         "Once something has answered, only rates within one dead band of the outermost reply are visited. " +
         "Unchecked, every rate in the span is.";
 
-    public RequestEstimate EstimateRequests(BaudSweepOptions options)
+    public BaudSweepEstimate Estimate(BaudSweepOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
 
         var smallest = options.UseDeadBand ? Math.Min(1 + 2 * options.DeadBandSteps, options.Grid.Count) : options.Grid.Count;
-        return new RequestEstimate(options.RequestsPerRate * smallest, options.RequestsPerRate * options.Grid.Count);
+        return new BaudSweepEstimate(
+            new RequestEstimate(options.RequestsPerRate * smallest, options.RequestsPerRate * options.Grid.Count),
+            options.Grid.Count);
     }
 
     public IBaudSweepPlanner CreatePlanner(BaudSweepOptions options, BaudSweepResult results)

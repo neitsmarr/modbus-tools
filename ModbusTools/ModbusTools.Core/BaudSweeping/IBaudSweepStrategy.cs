@@ -37,8 +37,8 @@ public interface IBaudSweepStrategy
     /// </summary>
     string? DeadBandNote => null;
 
-    /// <summary>Fewest and most requests the strategy can send.</summary>
-    RequestEstimate EstimateRequests(BaudSweepOptions options);
+    /// <summary>Fewest and most requests the strategy can send, and the most rate visits it can make.</summary>
+    BaudSweepEstimate Estimate(BaudSweepOptions options);
 
     /// <param name="options">The sweep's settings.</param>
     /// <param name="results">The run's results as they are recorded, for planners that plan from the whole picture.</param>
@@ -63,6 +63,10 @@ public interface IBaudSweepPlanner
     /// </summary>
     int? ExpectedRequests => null;
 }
+
+/// <param name="Requests">Fewest and most requests the sweep can send.</param>
+/// <param name="MaxVisits">Most rate visits the sweep can make; each opens the port and waits for it to settle.</param>
+public readonly record struct BaudSweepEstimate(RequestEstimate Requests, int MaxVisits);
 
 /// <param name="BaudRate">The rate to open the port at.</param>
 /// <param name="Requests">Requests to send at that rate before moving on.</param>

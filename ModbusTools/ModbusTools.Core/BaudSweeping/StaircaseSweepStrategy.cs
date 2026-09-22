@@ -43,12 +43,14 @@ public sealed class StaircaseSweepStrategy : IBaudSweepStrategy
 
     public string RequestsNote => "Turnarounds each side aims for before it stops; more means a tighter edge.";
 
-    public RequestEstimate EstimateRequests(BaudSweepOptions options)
+    public BaudSweepEstimate Estimate(BaudSweepOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
 
+        // Every visit is a single request.
         var reversals = ReversalTarget(options);
-        return new RequestEstimate(2 * reversals, 2 * RequestBudgetPerReversal * reversals);
+        var mostVisits = 2 * RequestBudgetPerReversal * reversals;
+        return new BaudSweepEstimate(new RequestEstimate(2 * reversals, mostVisits), mostVisits);
     }
 
     public IBaudSweepPlanner CreatePlanner(BaudSweepOptions options, BaudSweepResult results)

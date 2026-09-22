@@ -34,13 +34,16 @@ public sealed class BisectSweepStrategy : IBaudSweepStrategy
 
     public string RequestsNote => "Requests sent at each rate it visits, all in one go, before it decides.";
 
-    public RequestEstimate EstimateRequests(BaudSweepOptions options)
+    public BaudSweepEstimate Estimate(BaudSweepOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
 
         // Each side starts with a gap of MaxIndex + 1 steps and halves it until one step is left.
         var perSide = (int)Math.Ceiling(Math.Log2(options.Grid.MaxIndex + 1));
-        return new RequestEstimate(options.RequestsPerRate, options.RequestsPerRate * (1 + 2 * perSide));
+        var mostVisits = 1 + 2 * perSide;
+        return new BaudSweepEstimate(
+            new RequestEstimate(options.RequestsPerRate, options.RequestsPerRate * mostVisits),
+            mostVisits);
     }
 
     public IBaudSweepPlanner CreatePlanner(BaudSweepOptions options, BaudSweepResult results)

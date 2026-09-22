@@ -17,7 +17,7 @@
             </div>
             <div class="text-body-secondary">
                 @CrawlFormatting.Requests(Session.EstimatedRequests) requests planned,
-                ~@ScanFormatting.Duration(Session.WorstCase) if nothing answers
+                at most ~@ScanFormatting.Duration(Session.LongestDuration)
             </div>
         </div>
 

@@ -26,8 +26,8 @@ public sealed class BaudSweepSession
         PortName = portName;
         this.timeProvider = timeProvider;
         Result = new BaudSweepResult(options.Grid);
-        EstimatedRequests = options.EstimateRequests();
-        WorstCase = options.EstimateWorstCaseDuration();
+        EstimatedRequests = options.Estimate().Requests;
+        LongestDuration = options.EstimateLongestDuration();
     }
 
     public BaudSweepOptions Options { get; }
@@ -36,8 +36,8 @@ public sealed class BaudSweepSession
 
     public RequestEstimate EstimatedRequests { get; }
 
-    /// <summary>Estimated duration if no request is answered; see <see cref="BaudSweepOptions.EstimateWorstCaseDuration"/>.</summary>
-    public TimeSpan WorstCase { get; }
+    /// <summary>Longest the sweep can take; see <see cref="BaudSweepOptions.EstimateLongestDuration"/>.</summary>
+    public TimeSpan LongestDuration { get; }
 
     public ScanSessionState State { get; private set; } = ScanSessionState.NotStarted;
 
