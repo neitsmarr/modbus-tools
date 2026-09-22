@@ -53,6 +53,25 @@ public sealed record SerialSettings
     /// <summary>Bits on the wire per character: start bit, data bits, optional parity bit, stop bits.</summary>
     public int BitsPerCharacter => 1 + DataBits + (Parity == Parity.None ? 0 : 1) + (int)StopBits;
 
+    /// <summary>
+    /// The largest mismatch between two clocks that a character in this format survives even in theory, in percent.
+    /// The receiver times every bit from the start bit's falling edge and samples it in the middle; the last sample is
+    /// the first stop bit's, and it lands in the wrong bit once the mismatch has added up to half a bit by then. Real
+    /// receivers find the edge and place their samples less precisely, so they tolerate less.
+    /// </summary>
+    public double MaxRateMismatchPercent
+    {
+        get
+        {
+            // Bit times from the start bit's edge to the middle of the first stop bit; later stop bits are not checked.
+            var stopBitSample = 1 + DataBits + (Parity == Parity.None ? 0 : 1) + 0.5;
+            return 0.5 / stopBitSample * 100;
+        }
+    }
+
+    /// <summary>Formats the frame format alone, e.g. "8N1".</summary>
+    public string FrameFormat => $"{DataBits}{ParityCode}{(int)StopBits}";
+
     /// <summary>Single-letter parity code as used in "8N1" notation.</summary>
     public char ParityCode => Parity switch
     {
@@ -62,5 +81,5 @@ public sealed record SerialSettings
     };
 
     /// <summary>Formats as e.g. "9600 8N1".</summary>
-    public override string ToString() => $"{BaudRate} {DataBits}{ParityCode}{(int)StopBits}";
+    public override string ToString() => $"{BaudRate} {FrameFormat}";
 }

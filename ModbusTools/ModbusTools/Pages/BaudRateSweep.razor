@@ -76,7 +76,7 @@ else
             </div>
         }
 
-        @foreach (var hint in SweepFormatting.GetHints(session.Result, session.Options))
+        @foreach (var hint in SweepFormatting.GetHints(session))
         {
             <div class="alert alert-warning mt-3 mb-0" role="status">@hint</div>
         }

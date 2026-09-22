@@ -20,6 +20,7 @@ else
 {
     var window = Result.GetWindow();
     var barWidth = Math.Max(1.5, (PlotRight - PlotLeft) / Math.Max(Grid.Count, 1) * 0.85);
+    var ticks = GetAxis();
 
     <svg class="sweep-chart" viewBox="0 0 @Svg(Width) @Svg(Height)" role="img" aria-label="@AriaLabel(window)">
         @if (window is { Lower: BaudWindowEdge low, Upper: BaudWindowEdge high })
@@ -30,20 +31,26 @@ else
             </rect>
         }
 
-        @foreach (var tick in Ticks())
+        @foreach (var tick in ticks.Minor)
         {
+            <line class="minor-tick" x1="@Svg(X(tick))" y1="@Svg(PlotBottom)" x2="@Svg(X(tick))" y2="@Svg(PlotBottom + MinorTickLength)" />
+        }
+
+        @foreach (var tick in ticks.Labelled)
+        {
+            var labelX = LabelX(tick, ticks.Decimals);
             <g>
                 <line class="grid-line" x1="@Svg(X(tick))" y1="@Svg(PlotTop)" x2="@Svg(X(tick))" y2="@Svg(PlotBottom)" />
-                <text class="tick-label" x="@Svg(X(tick))" y="@Svg(PlotBottom + 16)" text-anchor="middle">@SweepFormatting.Signed(tick, 0)</text>
-                <text class="tick-sublabel" x="@Svg(X(tick))" y="@Svg(PlotBottom + 30)" text-anchor="middle">@SweepFormatting.Baud(Grid.ExpectedBaudRate * (1 + tick / 100))</text>
+                <text class="tick-label" font-size="@Svg(TickLabelFontSize)" x="@Svg(labelX)" y="@Svg(PlotBottom + 16)" text-anchor="middle">@PercentLabel(tick, ticks.Decimals)</text>
+                <text class="tick-sublabel" font-size="@Svg(TickSublabelFontSize)" x="@Svg(labelX)" y="@Svg(PlotBottom + 30)" text-anchor="middle">@BaudLabel(tick)</text>
             </g>
         }
 
         <line class="half-line" x1="@Svg(PlotLeft)" y1="@Svg(Y(0.5))" x2="@Svg(PlotRight)" y2="@Svg(Y(0.5))" />
         <line class="axis-line" x1="@Svg(PlotLeft)" y1="@Svg(PlotBottom)" x2="@Svg(PlotRight)" y2="@Svg(PlotBottom)" />
-        <text class="tick-label" x="@Svg(PlotLeft - 6)" y="@Svg(Y(1) + 4)" text-anchor="end">100 %</text>
-        <text class="tick-label" x="@Svg(PlotLeft - 6)" y="@Svg(Y(0.5) + 4)" text-anchor="end">50 %</text>
-        <text class="tick-label" x="@Svg(PlotLeft - 6)" y="@Svg(Y(0) + 4)" text-anchor="end">0</text>
+        <text class="tick-label" font-size="@Svg(TickLabelFontSize)" x="@Svg(PlotLeft - 6)" y="@Svg(Y(1) + 4)" text-anchor="end">100 %</text>
+        <text class="tick-label" font-size="@Svg(TickLabelFontSize)" x="@Svg(PlotLeft - 6)" y="@Svg(Y(0.5) + 4)" text-anchor="end">50 %</text>
+        <text class="tick-label" font-size="@Svg(TickLabelFontSize)" x="@Svg(PlotLeft - 6)" y="@Svg(Y(0) + 4)" text-anchor="end">0</text>
 
         @foreach (var rate in Result.Rates)
         {
@@ -101,13 +108,42 @@ else
     private const double PlotTop = 14;
     private const double PlotBottom = 202;
 
-    /// <summary>Tick spacings in percent, smallest first; the first that keeps the axis readable wins.</summary>
-    private static readonly double[] TickSteps = [0.1, 0.25, 0.5, 1, 2, 2.5, 5, 10, 20];
+    /// <summary>Axis label font sizes in chart units, set here rather than in CSS because the tick spacing depends on them.</summary>
+    private const double TickLabelFontSize = 11;
+    private const double TickSublabelFontSize = 10;
+
+    /// <summary>
+    /// Estimated width of one character of a label, as a share of its font size. SVG text cannot be measured before
+    /// it is drawn; digits and separators in the UI fonts are about 0.55 em wide, and rounding up keeps labels apart.
+    /// </summary>
+    private const double GlyphWidthEm = 0.6;
+
+    /// <summary>Space kept free between neighbouring labels, in ems of the label font.</summary>
+    private const double LabelGapEm = 1;
+
+    /// <summary>Least distance between two minor ticks, in ems of the label font, so they stay distinguishable.</summary>
+    private const double MinorTickSpacingEm = 1;
+
+    private const double MinorTickLength = 4;
+
+    /// <summary>
+    /// Candidate tick spacings in percent, smallest first - 1, 2, 2.5 and 5 times every power of ten from the finest
+    /// step a grid allows to its widest span - with the decimals a label at that spacing needs.
+    /// </summary>
+    private static readonly (double Step, int Decimals)[] TickSteps = BuildTickSteps();
+
+    private BaudGrid? axisGrid;
+    private TickAxis? axis;
 
     [Parameter, EditorRequired]
     public BaudSweepResult Result { get; set; } = default!;
 
     private BaudGrid Grid => Result.Grid;
+
+    /// <param name="Labelled">Ticks with a grid line and labels.</param>
+    /// <param name="Minor">Unlabelled ticks between them, on the axis only.</param>
+    /// <param name="Decimals">Decimals the labelled ticks' percentages need.</param>
+    private sealed record TickAxis(IReadOnlyList<double> Labelled, IReadOnlyList<double> Minor, int Decimals);
 
     /// <summary>SVG coordinates must not follow the user's locale, or a comma decimal separator breaks the path.</summary>
     private static string Svg(double value) => value.ToString("0.##", CultureInfo.InvariantCulture);
@@ -117,13 +153,82 @@ else
 
     private static double Y(double share) => PlotBottom - share * (PlotBottom - PlotTop);
 
-    private IEnumerable<double> Ticks()
+    private static (double Step, int Decimals)[] BuildTickSteps()
     {
-        var step = TickSteps.FirstOrDefault(candidate => 2 * Grid.SpanPercent / candidate <= 10, TickSteps[^1]);
-        for (var tick = -Math.Floor(Grid.SpanPercent / step) * step; tick <= Grid.SpanPercent + 1e-9; tick += step)
+        (double Mantissa, int Decimals)[] mantissas = [(1, 0), (2, 0), (2.5, 1), (5, 0)];
+        var first = (int)Math.Floor(Math.Log10(BaudGrid.MinStepPercent));
+        var last = (int)Math.Floor(Math.Log10(BaudGrid.MaxSpanPercent));
+        var steps = new List<(double, int)>();
+        for (var exponent = first; exponent <= last; exponent++)
         {
-            yield return tick;
+            foreach (var (mantissa, decimals) in mantissas)
+            {
+                steps.Add((mantissa * Math.Pow(10, exponent), Math.Max(0, decimals - exponent)));
+            }
         }
+
+        return [.. steps];
+    }
+
+    /// <summary>
+    /// The densest labelling whose labels do not overlap, plus minor ticks at the densest spacing that divides it,
+    /// is no finer than the rates themselves and keeps the ticks apart. Worked out once per grid.
+    /// </summary>
+    private TickAxis GetAxis()
+    {
+        if (axis is not null && axisGrid == Grid)
+        {
+            return axis;
+        }
+
+        var labelled = Array.FindIndex(TickSteps, candidate => LabelsFit(candidate.Step, candidate.Decimals));
+        var (step, decimals) = TickSteps[labelled < 0 ? TickSteps.Length - 1 : labelled];
+        var minor = TickSteps.Select(candidate => candidate.Step).FirstOrDefault(candidate =>
+            candidate < step &&
+            candidate >= Grid.StepPercent - 1e-9 &&
+            Spacing(candidate) >= MinorTickSpacingEm * TickLabelFontSize &&
+            IsMultiple(step, candidate));
+
+        axisGrid = Grid;
+        axis = new TickAxis(
+            TicksAt(step),
+            minor > 0 ? TicksAt(minor).Where(tick => !IsMultiple(tick, step)).ToList() : [],
+            decimals);
+        return axis;
+    }
+
+    private bool LabelsFit(double step, int decimals) =>
+        Spacing(step) >= TicksAt(step).Max(tick => LabelWidth(tick, decimals)) + LabelGapEm * TickLabelFontSize;
+
+    /// <summary>Distance between neighbouring ticks <paramref name="step"/> percent apart, in chart units.</summary>
+    private double Spacing(double step) => step / (2 * Grid.SpanPercent) * (PlotRight - PlotLeft);
+
+    private List<double> TicksAt(double step)
+    {
+        var count = (int)Math.Floor(Grid.SpanPercent / step + 1e-9);
+        return Enumerable.Range(-count, 2 * count + 1).Select(index => index * step).ToList();
+    }
+
+    private static bool IsMultiple(double value, double step)
+    {
+        var ratio = value / step;
+        return Math.Abs(ratio - Math.Round(ratio)) < 1e-6;
+    }
+
+    private static string PercentLabel(double tick, int decimals) => SweepFormatting.Signed(tick, decimals);
+
+    private string BaudLabel(double tick) => SweepFormatting.Baud(Grid.ExpectedBaudRate * (1 + tick / 100));
+
+    /// <summary>The wider of a tick's two labels, estimated from their length.</summary>
+    private double LabelWidth(double tick, int decimals) =>
+        Math.Max(PercentLabel(tick, decimals).Length * TickLabelFontSize, BaudLabel(tick).Length * TickSublabelFontSize) *
+        GlyphWidthEm;
+
+    /// <summary>Where a tick's labels are centred: on the tick, moved inwards as far as needed to stay on the chart.</summary>
+    private double LabelX(double tick, int decimals)
+    {
+        var half = LabelWidth(tick, decimals) / 2;
+        return Math.Clamp(X(tick), half, Width - half);
     }
 
     /// <summary>The bar's parts from the bottom up, as shares of the rate's requests.</summary>

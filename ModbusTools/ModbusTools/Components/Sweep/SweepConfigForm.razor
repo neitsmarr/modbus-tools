@@ -12,8 +12,9 @@
                                           BaudRateError="@Validation.ErrorFor(nameof(SweepFormModel.BaudRate))" OnChange="NotifyChangedAsync" />
                     <div class="form-text">
                         Baud is the rate the device is expected to use; the sweep is centred on it. The frame format
-                        stays the same throughout, and the result only applies to it: 11-bit characters (8E1, 8N2)
-                        tolerate slightly less drift than 10-bit ones (8N1).
+                        stays the same throughout, and the result only applies to it: a parity bit makes the receiver
+                        check the stop bit one bit later, so 8E1 tolerates slightly less drift than 8N1. A second stop
+                        bit makes no difference, as receivers check only the first.
                     </div>
                 </div>
             </div>

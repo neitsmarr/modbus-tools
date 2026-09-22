@@ -168,10 +168,14 @@ public sealed class BaudSweepSession
             case BaudRateStartedEvent started:
                 CurrentBaudRate = started.Step.BaudRate;
                 break;
-            case BaudRequestCompletedEvent completed:
-                estimator.Record(completed.Duration);
-                break;
             case BaudRateCompletedEvent completed:
+                // Reopening the port and letting it settle cost time on top of the requests, so each request is
+                // charged its share of the whole visit rather than only its own transaction.
+                if (completed.Requests > 0)
+                {
+                    estimator.Record(completed.Duration / completed.Requests);
+                }
+
                 expectedRequests = completed.ExpectedRequests;
                 CurrentBaudRate = null;
                 break;
