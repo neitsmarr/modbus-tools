@@ -73,12 +73,15 @@ public sealed class BaudRateSweeper
 
             var serial = options.SerialAt(step.BaudRate);
             var rate = result.GetOrAdd(step.BaudRate);
+            var visitStarted = timeProvider.GetTimestamp();
+            var paused = TimeSpan.Zero;
             if (await TryOpenAsync(serial, cancellationToken) is string openError)
             {
                 result.RecordPortError(step.BaudRate, openError);
                 planner.OnCompleted(new BaudSweepStepResult(step, 0, rate));
                 yield return new BaudRateRefusedEvent(step.BaudRate, openError);
-                yield return new BaudRateCompletedEvent(step.BaudRate, planner.ExpectedRequests);
+                yield return new BaudRateCompletedEvent(
+                    step.BaudRate, 0, timeProvider.GetElapsedTime(visitStarted), planner.ExpectedRequests);
 
                 if (++refusals >= MaxConsecutiveRefusals)
                 {
@@ -105,10 +108,9 @@ public sealed class BaudRateSweeper
                 {
                     if (request > 1)
                     {
-                        await runner.WaitBetweenTransactionsAsync(pauseToken, cancellationToken);
+                        paused += await runner.WaitBetweenTransactionsAsync(pauseToken, cancellationToken);
                     }
 
-                    var started = timeProvider.GetTimestamp();
                     var attempt = await runner.ExecuteAsync(
                         options.Probe, options.SlaveId, options.ResponseTimeout, timing, request);
                     result.Record(step.BaudRate, attempt);
@@ -117,8 +119,7 @@ public sealed class BaudRateSweeper
                         answered++;
                     }
 
-                    yield return new BaudRequestCompletedEvent(
-                        step.BaudRate, attempt, timeProvider.GetElapsedTime(started));
+                    yield return new BaudRequestCompletedEvent(step.BaudRate, attempt);
                 }
             }
             finally
@@ -127,7 +128,8 @@ public sealed class BaudRateSweeper
             }
 
             planner.OnCompleted(new BaudSweepStepResult(step, answered, rate));
-            yield return new BaudRateCompletedEvent(step.BaudRate, planner.ExpectedRequests);
+            var visit = timeProvider.GetElapsedTime(visitStarted) - paused;
+            yield return new BaudRateCompletedEvent(step.BaudRate, step.Requests, visit, planner.ExpectedRequests);
         }
 
         yield return new BaudSweepFinishedEvent();

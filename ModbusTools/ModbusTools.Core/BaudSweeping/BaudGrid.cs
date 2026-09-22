@@ -57,6 +57,17 @@ public readonly record struct BaudGrid
 
     public bool Contains(int index) => Math.Abs(index) <= MaxIndex;
 
-    /// <summary>Formats as e.g. "9600 ±10 % in 0.25 % steps".</summary>
+    /// <summary>Indices of the rates from <paramref name="fromPercent"/> to <paramref name="toPercent"/>, both included, ascending.</summary>
+    public IEnumerable<int> IndicesBetween(double fromPercent, double toPercent)
+    {
+        var first = Math.Max(-MaxIndex, (int)Math.Ceiling(fromPercent / StepPercent - 1e-9));
+        var last = Math.Min(MaxIndex, (int)Math.Floor(toPercent / StepPercent + 1e-9));
+        for (var index = first; index <= last; index++)
+        {
+            yield return index;
+        }
+    }
+
+    /// <summary>Formats as e.g. "9600 ±10 % in 0.1 % steps".</summary>
     public override string ToString() => $"{ExpectedBaudRate} ±{SpanPercent:0.##} % in {StepPercent:0.###} % steps";
 }

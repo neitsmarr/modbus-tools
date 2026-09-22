@@ -16,11 +16,11 @@ public sealed class SweepFormModel : ISerialSettingsForm
     public const int MaxPortSettleMs = 10_000;
 
     /// <summary>The expected baud rate: the middle of the sweep.</summary>
-    public int BaudRate { get; set; } = 9600;
+    public int BaudRate { get; set; } = 19200;
 
     public int DataBits { get; set; } = 8;
 
-    public Parity Parity { get; set; } = Parity.None;
+    public Parity Parity { get; set; } = Parity.Even;
 
     public StopBits StopBits { get; set; } = StopBits.One;
 
@@ -40,6 +40,9 @@ public sealed class SweepFormModel : ISerialSettingsForm
     public double StepPercent { get; set; } = BaudSweepOptions.DefaultStepPercent;
 
     public double DeadBandPercent { get; set; } = BaudSweepOptions.DefaultDeadBandPercent;
+
+    /// <summary>Whether to use the dead band; only strategies for which it is optional let it be turned off.</summary>
+    public bool UseDeadBand { get; set; } = true;
 
     public int RequestsPerRate { get; set; } = BaudSweepOptions.DefaultRequestsPerRate;
 
@@ -123,6 +126,7 @@ public sealed class SweepFormModel : ISerialSettingsForm
                 SpanPercent = SpanPercent,
                 StepPercent = StepPercent,
                 DeadBandPercent = DeadBandPercent,
+                UseDeadBand = UseDeadBand || strategy!.DeadBandNote is null,
                 RequestsPerRate = RequestsPerRate,
                 AdapterAccuracyPercent = AdapterAccuracyPercent,
                 ResponseTimeout = TimeSpan.FromMilliseconds(ResponseTimeoutMs),

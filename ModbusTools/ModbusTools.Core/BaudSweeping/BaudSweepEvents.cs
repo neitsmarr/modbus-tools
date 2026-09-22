@@ -27,12 +27,16 @@ public sealed record BaudRateStartedEvent(BaudSweepStep Step) : BaudSweepEvent;
 public sealed record BaudRateRefusedEvent(int BaudRate, string Error) : BaudSweepEvent;
 
 /// <summary>One request at one rate is finished, including flushing and the inter-request delay.</summary>
-/// <param name="Duration">Time the transaction took; pauses happen between transactions and are not included.</param>
-public sealed record BaudRequestCompletedEvent(int BaudRate, ProbeAttempt Attempt, TimeSpan Duration) : BaudSweepEvent;
+public sealed record BaudRequestCompletedEvent(int BaudRate, ProbeAttempt Attempt) : BaudSweepEvent;
 
 /// <summary>Everything planned for one rate is done and the port is closed again.</summary>
+/// <param name="Requests">Requests sent during this visit; none when the port refused the rate.</param>
+/// <param name="Duration">
+/// The whole visit - opening the port, letting it settle, the requests and closing it again - with pauses left out.
+/// </param>
 /// <param name="ExpectedRequests">The planner's refreshed estimate of the total; null while it cannot tell.</param>
-public sealed record BaudRateCompletedEvent(int BaudRate, int? ExpectedRequests) : BaudSweepEvent;
+public sealed record BaudRateCompletedEvent(int BaudRate, int Requests, TimeSpan Duration, int? ExpectedRequests)
+    : BaudSweepEvent;
 
 /// <summary>The strategy has nothing left to try. Cancellation and failures surface as exceptions instead.</summary>
 public sealed record BaudSweepFinishedEvent : BaudSweepEvent;

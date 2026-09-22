@@ -12,8 +12,9 @@
                                           BaudRateError="@Validation.ErrorFor(nameof(SweepFormModel.BaudRate))" OnChange="NotifyChangedAsync" />
                     <div class="form-text">
                         Baud is the rate the device is expected to use; the sweep is centred on it. The frame format
-                        stays the same throughout, and the result only applies to it: 11-bit characters (8E1, 8N2)
-                        tolerate slightly less drift than 10-bit ones (8N1).
+                        stays the same throughout, and the result only applies to it: a parity bit makes the receiver
+                        check the stop bit one bit later, so 8E1 tolerates slightly less drift than 8N1. A second stop
+                        bit makes no difference, as receivers check only the first.
                     </div>
                 </div>
             </div>
@@ -90,9 +91,17 @@
                                    @bind="Model.StepPercent" @bind:after="NotifyChangedAsync" />
                         </div>
                         <div class="col-sm-3">
-                            <label class="form-label" for="sweep-dead-band">Dead band (%)</label>
+                            <div class="form-label d-flex align-items-baseline gap-1">
+                                @if (strategy?.DeadBandNote is not null)
+                                {
+                                    <input id="sweep-use-dead-band" class="form-check-input flex-shrink-0" type="checkbox" aria-label="Use the dead band"
+                                           @bind="Model.UseDeadBand" @bind:after="NotifyChangedAsync" />
+                                }
+                                <label for="sweep-dead-band">Dead band (%)</label>
+                            </div>
                             <input id="sweep-dead-band" class="form-control" type="number" min="0.05" step="0.25"
                                    title="How far past the last reply the sweep keeps going before it gives up on that direction"
+                                   disabled="@(strategy?.DeadBandNote is not null && !Model.UseDeadBand)"
                                    @bind="Model.DeadBandPercent" @bind:after="NotifyChangedAsync" />
                         </div>
                         <div class="col-sm-3">
@@ -105,7 +114,15 @@
                     @FieldError(nameof(SweepFormModel.StepPercent))
                     @FieldError(nameof(SweepFormModel.DeadBandPercent))
                     @FieldError(nameof(SweepFormModel.RequestsPerRate))
-                    <div class="form-text">Requests: @strategy?.RequestsNote</div>
+                    <div class="form-text">
+                        Requests: @strategy?.RequestsNote A rate counts as working when at least half of its requests
+                        are answered - a majority vote, with a tie counting as working.
+                    </div>
+                    @if (strategy?.DeadBandNote is string deadBandNote)
+                    {
+                        <div class="form-text">Dead band: @deadBandNote</div>
+                    }
+
 
                     <div class="mt-3">
                         <label class="form-label" for="sweep-accuracy">Port clock accuracy (±%, optional)</label>
@@ -170,9 +187,9 @@
                                 </span>
                             </dd>
                             <dt class="col-sm-5">Requests</dt>
-                            <dd class="col-sm-7"><strong>@CrawlFormatting.Requests(options.EstimateRequests())</strong></dd>
-                            <dt class="col-sm-5">If nothing answers</dt>
-                            <dd class="col-sm-7 mb-0"><strong>~@ScanFormatting.Duration(options.EstimateWorstCaseDuration())</strong></dd>
+                            <dd class="col-sm-7"><strong>@CrawlFormatting.Requests(options.Estimate().Requests)</strong></dd>
+                            <dt class="col-sm-5" title="The most requests this method can send, all timing out">Longest possible</dt>
+                            <dd class="col-sm-7 mb-0"><strong>~@ScanFormatting.Duration(options.EstimateLongestDuration())</strong></dd>
                         </dl>
                     }
                 </div>

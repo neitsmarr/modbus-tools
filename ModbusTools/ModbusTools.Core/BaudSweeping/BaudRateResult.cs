@@ -45,8 +45,9 @@ public sealed class BaudRateResult
     public double SuccessRate => Requests == 0 ? 0 : (double)Answered / Requests;
 
     /// <summary>
-    /// Whether the link works here. Half the requests is the threshold because near an edge the outcome depends on
-    /// the bits in each frame, so rates there answer some of the time; the edge is where that crosses one in two.
+    /// Whether the link works here, by majority vote over every request sent at this rate, a tie counting as working.
+    /// Half the requests is the threshold because near an edge the outcome depends on the bits in each frame, so
+    /// rates there answer some of the time; the edge is where that crosses one in two.
     /// </summary>
     public bool IsWorking => Requests > 0 && Answered * 2 >= Requests;
 

@@ -8,7 +8,7 @@ namespace ModbusTools.Core.BaudSweeping;
 public sealed record BaudSweepOptions
 {
     public const double DefaultSpanPercent = 10;
-    public const double DefaultStepPercent = 0.25;
+    public const double DefaultStepPercent = 0.1;
     public const double DefaultDeadBandPercent = 1;
     public const int DefaultRequestsPerRate = 10;
     public const int MaxRequestsPerRate = 100;
@@ -64,8 +64,7 @@ public sealed record BaudSweepOptions
     } = DefaultStepPercent;
 
     /// <summary>
-    /// How far past the last reply a sweep keeps going before it gives up on that direction, in percent. It is also
-    /// the coarse step of the strategies that start coarse and refine.
+    /// How far past the last reply a sweep keeps going before it gives up on that direction, in percent.
     /// </summary>
     public double DeadBandPercent
     {
@@ -76,6 +75,12 @@ public sealed record BaudSweepOptions
             field = value;
         }
     } = DefaultDeadBandPercent;
+
+    /// <summary>
+    /// Whether a strategy with a <see cref="IBaudSweepStrategy.DeadBandNote"/> uses the dead band; the others always
+    /// do, or never.
+    /// </summary>
+    public bool UseDeadBand { get; init; } = true;
 
     /// <summary>Requests each rate gets; how they are spread over the sweep is up to the strategy.</summary>
     public int RequestsPerRate
@@ -186,19 +191,19 @@ public sealed record BaudSweepOptions
     public TransactionTiming TimingAt(SerialSettings serial) =>
         new(serial, FrameGapAt(serial), InterRequestDelay, MaxFlushDuration);
 
-    public RequestEstimate EstimateRequests() => Strategy.EstimateRequests(this);
+    public BaudSweepEstimate Estimate() => Strategy.Estimate(this);
 
     /// <summary>
-    /// Estimated duration if no request is answered: every request waits for the request to be sent, the full
-    /// timeout, one frame gap of flushing and the inter-request delay, and every rate costs a settle delay on top.
-    /// Reopening the port for each rate and browser timer overhead come on top of that, so real sweeps take longer.
+    /// Longest the sweep can take: the most requests the strategy can send, each timing out - waiting for the request
+    /// to be sent, the full timeout, one frame gap of flushing and the inter-request delay - plus a settle delay for
+    /// the most rate visits it can make. Reopening the port and browser timer overhead come on top of that.
     /// </summary>
-    public TimeSpan EstimateWorstCaseDuration()
+    public TimeSpan EstimateLongestDuration()
     {
-        var requests = EstimateRequests().Maximum;
+        var estimate = Estimate();
         var serial = SerialAt(Grid.LowestBaudRate);
         var transmission = RtuTiming.TransmissionTime(serial, Probe.BuildFrame(SlaveId).Length);
         var perRequest = transmission + ResponseTimeout + FrameGapAt(serial) + InterRequestDelay;
-        return (perRequest + PortSettleDelay) * requests;
+        return perRequest * estimate.Requests.Maximum + PortSettleDelay * estimate.MaxVisits;
     }
 }

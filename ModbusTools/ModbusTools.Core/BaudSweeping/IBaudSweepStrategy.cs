@@ -25,8 +25,20 @@ public interface IBaudSweepStrategy
     /// <summary>What <see cref="BaudSweepOptions.RequestsPerRate"/> means for this strategy, for the form's hint.</summary>
     string RequestsNote { get; }
 
-    /// <summary>Fewest and most requests the strategy can send.</summary>
-    RequestEstimate EstimateRequests(BaudSweepOptions options);
+    /// <summary>
+    /// What the dead band saves for this strategy, for the form's hint, when <see cref="BaudSweepOptions.UseDeadBand"/>
+    /// can turn it off; null when the strategy cannot do without it or does not use it.
+    /// </summary>
+    string? DeadBandNote => null;
+
+    /// <summary>
+    /// Ends the hint shown when nothing answered, after "... or the expected rate itself:" - how far this strategy
+    /// searched, and which one searches further.
+    /// </summary>
+    string NothingAnsweredNote { get; }
+
+    /// <summary>Fewest and most requests the strategy can send, and the most rate visits it can make.</summary>
+    BaudSweepEstimate Estimate(BaudSweepOptions options);
 
     IBaudSweepPlanner CreatePlanner(BaudSweepOptions options);
 }
@@ -49,6 +61,10 @@ public interface IBaudSweepPlanner
     /// </summary>
     int? ExpectedRequests => null;
 }
+
+/// <param name="Requests">Fewest and most requests the sweep can send.</param>
+/// <param name="MaxVisits">Most rate visits the sweep can make; each opens the port and waits for it to settle.</param>
+public readonly record struct BaudSweepEstimate(RequestEstimate Requests, int MaxVisits);
 
 /// <param name="BaudRate">The rate to open the port at.</param>
 /// <param name="Requests">Requests to send at that rate before moving on.</param>

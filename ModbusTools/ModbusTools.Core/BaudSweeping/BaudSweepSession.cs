@@ -26,8 +26,8 @@ public sealed class BaudSweepSession
         PortName = portName;
         this.timeProvider = timeProvider;
         Result = new BaudSweepResult(options.Grid);
-        EstimatedRequests = options.EstimateRequests();
-        WorstCase = options.EstimateWorstCaseDuration();
+        EstimatedRequests = options.Estimate().Requests;
+        LongestDuration = options.EstimateLongestDuration();
     }
 
     public BaudSweepOptions Options { get; }
@@ -36,8 +36,8 @@ public sealed class BaudSweepSession
 
     public RequestEstimate EstimatedRequests { get; }
 
-    /// <summary>Estimated duration if no request is answered; see <see cref="BaudSweepOptions.EstimateWorstCaseDuration"/>.</summary>
-    public TimeSpan WorstCase { get; }
+    /// <summary>Longest the sweep can take; see <see cref="BaudSweepOptions.EstimateLongestDuration"/>.</summary>
+    public TimeSpan LongestDuration { get; }
 
     public ScanSessionState State { get; private set; } = ScanSessionState.NotStarted;
 
@@ -168,10 +168,14 @@ public sealed class BaudSweepSession
             case BaudRateStartedEvent started:
                 CurrentBaudRate = started.Step.BaudRate;
                 break;
-            case BaudRequestCompletedEvent completed:
-                estimator.Record(completed.Duration);
-                break;
             case BaudRateCompletedEvent completed:
+                // Reopening the port and letting it settle cost time on top of the requests, so each request is
+                // charged its share of the whole visit rather than only its own transaction.
+                if (completed.Requests > 0)
+                {
+                    estimator.Record(completed.Duration / completed.Requests);
+                }
+
                 expectedRequests = completed.ExpectedRequests;
                 CurrentBaudRate = null;
                 break;

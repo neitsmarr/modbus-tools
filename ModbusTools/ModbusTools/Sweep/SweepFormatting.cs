@@ -1,5 +1,6 @@
 using System.Globalization;
 using ModbusTools.Core.BaudSweeping;
+using ModbusTools.Core.Scanning;
 
 namespace ModbusTools.Sweep;
 
@@ -46,40 +47,28 @@ public static class SweepFormatting
     public static string SuccessPercent(BaudRateResult rate) =>
         rate.Requests == 0 ? "–" : (rate.SuccessRate * 100).ToString("0", CultureInfo.CurrentCulture) + " %";
 
-    /// <summary>What the results say and what to do about it; empty when the sweep is going fine.</summary>
-    public static IReadOnlyList<string> GetHints(BaudSweepResult result, BaudSweepOptions options)
+    /// <summary>
+    /// What the results say and what to do about it, once the sweep has finished; empty while it runs, since the
+    /// window is still taking shape. Conclusions about the window need a completed sweep: a cancelled or failed one
+    /// simply did not get that far.
+    /// </summary>
+    public static IReadOnlyList<string> GetHints(BaudSweepSession session)
     {
-        ArgumentNullException.ThrowIfNull(result);
-        ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(session);
 
-        var window = result.GetWindow();
         var hints = new List<string>();
-
-        switch (window.Status)
+        if (session.State != ScanSessionState.Finished)
         {
-            case BaudWindowStatus.NoWorkingRate when window.AnythingAnswered:
-                hints.Add(
-                    "Some requests were answered, but no rate answered at least half of them. The link is marginal " +
-                    "everywhere it was tried: check the wiring and termination, or raise the timeout.");
-                break;
-            case BaudWindowStatus.NoWorkingRate:
-                hints.Add(
-                    "Nothing answered. Check the slave ID, the frame format and the wiring - or the expected rate " +
-                    "itself: the sweep stops one dead band past the last reply, so a device more than that far off " +
-                    "is never reached. Random order searches the whole span instead and does find it.");
-                break;
-            case BaudWindowStatus.Unbounded when window.TestedRates >= options.Grid.Count:
-                hints.Add(
-                    "Every rate in the span answered, which a real UART link cannot do: it tolerates a few percent " +
-                    "of mismatch, not ten. The port is almost certainly ignoring the baud rate, as happens with " +
-                    "devices that emulate a serial port over USB rather than driving a real UART.");
-                break;
-            case BaudWindowStatus.Unbounded:
-                hints.Add("No edge was reached on either side. Widen the span so the sweep can get past the window.");
-                break;
-            case BaudWindowStatus.PartlyBounded:
-                hints.Add($"Only the {(window.Lower is null ? "upper" : "lower")} edge was found. Widen the span to reach the other one.");
-                break;
+            return hints;
+        }
+
+        var result = session.Result;
+        var options = session.Options;
+        var window = result.GetWindow();
+
+        if (session.Outcome == SweepOutcome.Completed)
+        {
+            AddWindowHints(hints, window, result, options);
         }
 
         if (window.RefusedRates > 0)
@@ -97,5 +86,45 @@ public static class SweepFormatting
         }
 
         return hints;
+    }
+
+    /// <summary>What the finished window says about the device, the span or the port.</summary>
+    private static void AddWindowHints(
+        List<string> hints, BaudWindow window, BaudSweepResult result, BaudSweepOptions options)
+    {
+        switch (window.Status)
+        {
+            case BaudWindowStatus.NoWorkingRate when window.AnythingAnswered:
+                hints.Add(
+                    "Some requests were answered, but no rate answered at least half of them. The link is marginal " +
+                    "everywhere it was tried: check the wiring and termination, or raise the timeout.");
+                break;
+            case BaudWindowStatus.NoWorkingRate:
+                hints.Add(
+                    "Nothing answered. Check the slave ID, the frame format and the wiring - or the expected rate " +
+                    "itself: " + options.Strategy.NothingAnsweredNote);
+                break;
+            case BaudWindowStatus.Unbounded when TestedSpread(result) > 2 * options.Serial.MaxRateMismatchPercent:
+                hints.Add(
+                    $"Every rate tried answered, across {Percent(TestedSpread(result), 1)}, which a real UART link " +
+                    $"cannot do: with {options.Serial.FrameFormat} it survives at most " +
+                    $"±{Percent(options.Serial.MaxRateMismatchPercent, 1)} of mismatch even in theory. The port is " +
+                    "almost certainly ignoring the baud rate, as happens with devices that emulate a serial port " +
+                    "over USB rather than driving a real UART.");
+                break;
+            case BaudWindowStatus.Unbounded:
+                hints.Add("No edge was reached on either side. Widen the span so the sweep can get past the window.");
+                break;
+            case BaudWindowStatus.PartlyBounded:
+                hints.Add($"Only the {(window.Lower is null ? "upper" : "lower")} edge was found. Widen the span to reach the other one.");
+                break;
+        }
+    }
+
+    /// <summary>Distance between the lowest and the highest rate that had requests, in percent.</summary>
+    private static double TestedSpread(BaudSweepResult result)
+    {
+        var tested = result.Rates.Where(rate => rate.Requests > 0).Select(rate => rate.OffsetPercent).ToList();
+        return tested.Count == 0 ? 0 : tested.Max() - tested.Min();
     }
 }
