@@ -1,0 +1,78 @@
+@{
+    var statistics = Session.Capture.Statistics;
+    var serial = Session.Options.Serial;
+}
+<dl class="row mb-3 small">
+    <dt class="col-sm-3">Received</dt>
+    <dd class="col-sm-9">
+        @SniffFormatting.Count(statistics.Bytes) bytes in @SniffFormatting.Count(statistics.Frames) valid frames:
+        @SniffFormatting.Count(statistics.Requests) requests, @SniffFormatting.Count(statistics.Responses) responses,
+        @SniffFormatting.Count(statistics.Broadcasts) broadcasts
+    </dd>
+    <dt class="col-sm-3">Errors</dt>
+    <dd class="col-sm-9">
+        @SniffFormatting.Count(statistics.GarbledBytes) garbled bytes in @SniffFormatting.Count(statistics.GarbledRuns) runs,
+        @SniffFormatting.Count(statistics.LineErrors) line errors
+    </dd>
+    <dt class="col-sm-3" title="Share of the time the line carried the received bytes, at one character time per byte">Bus load</dt>
+    <dd class="col-sm-9">
+        @SniffFormatting.Percent(statistics.BusLoad(serial, Session.CaptureTime))
+        <span class="text-body-secondary">over @ScanFormatting.Duration(Session.CaptureTime)</span>
+    </dd>
+    <dt class="col-sm-3">Port</dt>
+    <dd class="col-sm-9 mb-0">
+        @Session.PortName, @serial, response timeout @ScanFormatting.Milliseconds(Session.Options.ResponseTimeout) ms
+    </dd>
+</dl>
+
+@if (statistics.Slaves.Count == 0)
+{
+    <p class="text-body-secondary small mb-0">No slave has been addressed yet.</p>
+}
+else
+{
+    <div class="table-responsive">
+        <table class="table table-sm table-hover align-middle mb-0 small">
+            <thead>
+                <tr>
+                    <th scope="col" class="text-end">Slave</th>
+                    <th scope="col" class="text-end">Requests</th>
+                    <th scope="col" class="text-end">Answered</th>
+                    <th scope="col" class="text-end">Exceptions</th>
+                    <th scope="col" class="text-end">No response</th>
+                    <th scope="col" class="text-end" title="Only garbled bytes or line errors came back">Garbled reply</th>
+                    <th scope="col" class="text-end" title="Responses no request was waiting for">Unexpected</th>
+                    <th scope="col" class="text-end" title="From receiving the end of the request to receiving the start of the reply">Avg response</th>
+                    <th scope="col" class="text-end">Max response</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var slave in statistics.Slaves)
+                {
+                    <tr>
+                        <td class="text-end">@slave.Address</td>
+                        <td class="text-end">@SniffFormatting.Count(slave.Requests)</td>
+                        <td class="text-end">@SniffFormatting.Count(slave.Answered)</td>
+                        <td class="text-end">@SniffFormatting.Count(slave.Exceptions)</td>
+                        <td class="text-end">@SniffFormatting.Count(slave.NoResponse)</td>
+                        <td class="text-end">@SniffFormatting.Count(slave.GarbledReplies)</td>
+                        <td class="text-end">@SniffFormatting.Count(slave.Unexpected)</td>
+                        <td class="text-end" title="@TimingNote(slave)">@Milliseconds(slave.AverageResponseTime)</td>
+                        <td class="text-end" title="@TimingNote(slave)">@Milliseconds(slave.MaxResponseTime)</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired]
+    public SniffSession Session { get; set; } = default!;
+
+    private static string Milliseconds(TimeSpan? time) => time is TimeSpan value ? $"{ScanFormatting.Milliseconds(value)} ms" : "–";
+
+    private static string TimingNote(SlaveStatistics slave) =>
+        $"Over {SniffFormatting.Count(slave.TimedReplies)} timed replies; " +
+        $"{SniffFormatting.Count(slave.RepliesInRequestChunk)} more arrived in the same chunk as their request and could not be timed.";
+}

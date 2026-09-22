@@ -1,0 +1,275 @@
+@inject IJSRuntime JS
+
+<div class="d-flex flex-wrap align-items-center gap-3 mb-2">
+    <select class="form-select form-select-sm w-auto" aria-label="Filter by address"
+            @bind="addressFilter" @bind:after="OnFilterChangedAsync">
+        <option value="">All addresses</option>
+        @if (Capture.Statistics.Broadcasts > 0)
+        {
+            <option value="0">Broadcast (0)</option>
+        }
+        @foreach (var slave in Capture.Statistics.Slaves)
+        {
+            <option value="@slave.Address">Slave @slave.Address</option>
+        }
+    </select>
+    <div class="form-check form-switch mb-0">
+        <input id="sniff-problems" class="form-check-input" type="checkbox" @bind="problemsOnly" @bind:after="OnFilterChangedAsync" />
+        <label class="form-check-label" for="sniff-problems"
+               title="Garbled bytes, line errors, exceptions, requests without a reply and replies nobody asked for">
+            Problems only
+        </label>
+    </div>
+    <span class="text-body-secondary small">
+        @if (matches is not null)
+        {
+            <span>@SniffFormatting.Count(matches.Count) of </span>
+        }
+        @SniffFormatting.Count(Capture.Entries.Count) entries
+        @if (Capture.DroppedEntries > 0)
+        {
+            <span>(@SniffFormatting.Count(Capture.DroppedEntries) older ones dropped)</span>
+        }
+    </span>
+    @if (!follow)
+    {
+        <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" @onclick="JumpToNewest">Jump to newest</button>
+    }
+</div>
+
+<div @ref="scroller" class="log-scroll border rounded" @onscroll="OnScrollAsync">
+    <table class="table table-sm table-hover align-middle mb-0 sniff-log">
+        <thead>
+            <tr>
+                <th scope="col" class="text-end">#</th>
+                <th scope="col" class="text-end" title="When the first byte was received, from the start of the capture">Time</th>
+                <th scope="col">Kind</th>
+                <th scope="col" class="text-end">Slave</th>
+                <th scope="col">Function</th>
+                <th scope="col">Content</th>
+                <th scope="col" title="For a request, what became of it; for a response, the request it answers">Reply</th>
+                <th scope="col">Bytes</th>
+            </tr>
+        </thead>
+        <tbody>
+            <Virtualize @ref="virtualize" TItem="SniffEntry" ItemsProvider="ProvideEntries" ItemSize="RowHeight" SpacerElement="tr" Context="entry">
+                <ItemContent>
+                    @{
+                        var hex = Hex.Format(entry.Bytes.Span);
+                    }
+                    <tr>
+                        <td class="text-end text-body-secondary">@entry.Number</td>
+                        <td class="text-end font-monospace">@SniffFormatting.Time(entry.Time)</td>
+                        <td><span class="badge @SniffFormatting.KindBadgeClass(entry.Kind)">@SniffFormatting.KindName(entry.Kind)</span></td>
+                        <td class="text-end">@entry.Address</td>
+                        <td>@(entry.FunctionCode is byte function ? FunctionCodes.GetLabel(function) : null)</td>
+                        <td>@Content(entry)</td>
+                        <td>@Reply(entry)</td>
+                        <td class="hex font-monospace" title="@hex">@hex</td>
+                    </tr>
+                </ItemContent>
+                <EmptyContent>
+                    <tr>
+                        <td colspan="8" class="text-body-secondary">
+                            @(Capture.Entries.Count == 0 ? "Nothing received yet." : "No entries match.")
+                        </td>
+                    </tr>
+                </EmptyContent>
+            </Virtualize>
+        </tbody>
+    </table>
+</div>
+
+@code {
+    // Row height the list is laid out with; also how close to the bottom still counts as being at the newest row.
+    private const int RowHeight = 31;
+
+    private Virtualize<SniffEntry>? virtualize;
+    private ElementReference scroller;
+    private SniffCapture? shownCapture;
+    private long shownVersion = -1;
+    private string addressFilter = string.Empty;
+    private bool problemsOnly;
+
+    // Entries that pass the filter as of shownVersion; null when nothing is filtered and the log is shown as it is.
+    private List<SniffEntry>? matches;
+
+    // Whether the view keeps the newest entry in sight; scrolling up turns it off, scrolling to the bottom back on.
+    private bool follow = true;
+    private bool scrollToNewest;
+    private double lastScrollTop;
+
+    // Where the view was last scrolled to show the newest entry; null once the rows were replaced, since the old
+    // position then says nothing about where the user has scrolled.
+    private double? pinnedTop;
+
+    /// <summary>The capture to show; the page re-renders this component whenever it may have changed.</summary>
+    [Parameter, EditorRequired]
+    public SniffCapture Capture { get; set; } = default!;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!ReferenceEquals(shownCapture, Capture))
+        {
+            shownCapture = Capture;
+            follow = true;
+            pinnedTop = null;
+            await RefreshAsync();
+        }
+        else if (shownVersion != Capture.Version)
+        {
+            await RefreshAsync();
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!scrollToNewest)
+        {
+            return;
+        }
+
+        scrollToNewest = false;
+        var (top, visible, height) = await MeasureAsync();
+
+        // Rows arrive while the user scrolls, so this can run before the scroll handler has seen the move. A view that
+        // is no longer where it was pinned, and not at the bottom either, was scrolled up by the user: leave it there.
+        // Less than a pixel is rounding.
+        if (pinnedTop is double pinned && top < pinned - 1 && height - (top + visible) > RowHeight)
+        {
+            follow = false;
+            StateHasChanged();
+            return;
+        }
+
+        await JS.InvokeVoidAsync("Reflect.set", scroller, "scrollTop", height);
+        pinnedTop = await JS.InvokeAsync<double>("Reflect.get", scroller, "scrollTop");
+    }
+
+    private Task OnFilterChangedAsync()
+    {
+        pinnedTop = null;
+        return RefreshAsync();
+    }
+
+    private async Task RefreshAsync()
+    {
+        shownVersion = Capture.Version;
+        matches = BuildMatches();
+        scrollToNewest = follow;
+        if (virtualize is not null)
+        {
+            await virtualize.RefreshDataAsync();
+        }
+    }
+
+    private List<SniffEntry>? BuildMatches()
+    {
+        byte? address = byte.TryParse(addressFilter, out var value) ? value : null;
+        if (address is null && !problemsOnly)
+        {
+            return null;
+        }
+
+        var found = new List<SniffEntry>();
+        foreach (var entry in Capture.Entries)
+        {
+            if ((address is null || entry.Address == address) && (!problemsOnly || entry.IsProblem))
+            {
+                found.Add(entry);
+            }
+        }
+
+        return found;
+    }
+
+    private ValueTask<ItemsProviderResult<SniffEntry>> ProvideEntries(ItemsProviderRequest request)
+    {
+        IReadOnlyList<SniffEntry> source = matches ?? Capture.Entries;
+        var count = Math.Max(0, Math.Min(request.Count, source.Count - request.StartIndex));
+        var entries = new SniffEntry[count];
+        for (var i = 0; i < count; i++)
+        {
+            entries[i] = source[request.StartIndex + i];
+        }
+
+        return ValueTask.FromResult(new ItemsProviderResult<SniffEntry>(entries, source.Count));
+    }
+
+    private async Task OnScrollAsync()
+    {
+        var (top, visible, total) = await MeasureAsync();
+
+        // New rows make the list taller without scrolling it, so only a move upwards means the user left the bottom.
+        if (top < lastScrollTop)
+        {
+            follow = false;
+        }
+
+        if (total - (top + visible) <= RowHeight)
+        {
+            follow = true;
+        }
+
+        lastScrollTop = top;
+    }
+
+    private void JumpToNewest()
+    {
+        follow = true;
+        scrollToNewest = true;
+        pinnedTop = null;
+    }
+
+    private async Task<(double Top, double Visible, double Total)> MeasureAsync()
+    {
+        var top = await JS.InvokeAsync<double>("Reflect.get", scroller, "scrollTop");
+        var visible = await JS.InvokeAsync<double>("Reflect.get", scroller, "clientHeight");
+        var total = await JS.InvokeAsync<double>("Reflect.get", scroller, "scrollHeight");
+        return (top, visible, total);
+    }
+
+    private static RenderFragment Content(SniffEntry entry) => __builder =>
+    {
+        if (entry.Summary is string summary)
+        {
+            <text>@summary</text>
+        }
+        else if (entry.Kind == SniffEntryKind.Garbled)
+        {
+            <span class="text-body-secondary">@(entry.Bytes.Length == 1 ? "1 byte" : $"{entry.Bytes.Length} bytes") outside any valid frame</span>
+        }
+        else if (entry.Kind == SniffEntryKind.LineError)
+        {
+            <span class="text-body-secondary">framing, parity, break or overrun; bytes were lost</span>
+        }
+        else
+        {
+            <span class="text-body-secondary">not decoded</span>
+        }
+    };
+
+    private static RenderFragment Reply(SniffEntry entry) => __builder =>
+    {
+        if (entry.Outcome is RequestOutcome outcome)
+        {
+            <span class="@SniffFormatting.OutcomeClass(outcome)">@SniffFormatting.OutcomeText(outcome)</span>
+            if (entry.Reply is SniffEntry reply)
+            {
+                <span class="text-body-secondary"> by #@reply.Number</span>
+            }
+        }
+        else if (entry.Kind == SniffEntryKind.Broadcast)
+        {
+            <span class="text-body-secondary">none expected</span>
+        }
+        else if (entry.Request is SniffEntry request)
+        {
+            <span>to #@request.Number, @SniffFormatting.ResponseTime(entry)</span>
+        }
+        else if (entry.IsUnexpected)
+        {
+            <span class="text-warning-emphasis" title="No request was waiting for it: it came after the timeout, or its request was not received">unexpected</span>
+        }
+    };
+}
