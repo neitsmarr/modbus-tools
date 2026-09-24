@@ -12,11 +12,13 @@
 <p>
     Every tool only reads. They send read and identification requests, never a write, so they are safe to point at a
     live device — bearing in mind that reads themselves are not always free of side effects, since some devices clear
-    counters or drop queued events when those addresses are read.
+    counters or drop queued events when those addresses are read. The Bus Sniffer does not even send: it only listens,
+    which makes it the one tool to use on a bus whose own master is active, since anything sent there would collide
+    with that master's traffic.
 </p>
 
 <div class="row g-3 mt-1">
-    <div class="col-lg-4">
+    <div class="col-lg-6">
         <div class="card h-100">
             <div class="card-body">
                 <h2 class="h5 card-title">
@@ -31,7 +33,7 @@
         </div>
     </div>
 
-    <div class="col-lg-4">
+    <div class="col-lg-6">
         <div class="card h-100">
             <div class="card-body">
                 <h2 class="h5 card-title">
@@ -46,7 +48,7 @@
         </div>
     </div>
 
-    <div class="col-lg-4">
+    <div class="col-lg-6">
         <div class="card h-100">
             <div class="card-body">
                 <h2 class="h5 card-title">
@@ -56,6 +58,21 @@
                     Measures how far the baud rate can drift before a device stops answering. The middle of the range
                     that still works is the rate the device really runs at; the distance to its edges is the room
                     left for clock drift.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-6">
+        <div class="card h-100">
+            <div class="card-body">
+                <h2 class="h5 card-title">
+                    <a class="stretched-link text-decoration-none" href="sniffer">Bus Sniffer</a>
+                </h2>
+                <p class="card-text">
+                    Listens to a bus without sending anything and decodes the traffic: which slaves the master asks for
+                    what, how they answer and how quickly, and where frames get lost or garbled. The log exports as
+                    CSV, and the raw capture as JSON for decoding again later.
                 </p>
             </div>
         </div>

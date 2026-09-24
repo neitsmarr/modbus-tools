@@ -1,0 +1,90 @@
+<fieldset disabled="@Disabled">
+    <div class="row g-3">
+        <div class="col-lg-6">
+            <div class="card h-100">
+                <div class="card-header">Port &amp; serial settings</div>
+                <div class="card-body">
+                    <SerialSettingsFields Model="Model" IdPrefix="sniff" SelectedPort="SelectedPort" SelectedPortChanged="SelectedPortChanged"
+                                          PreferredPortId="@PreferredPortId" Disabled="Disabled"
+                                          BaudRateError="@Validation.ErrorFor(nameof(SniffFormModel.BaudRate))" OnChange="NotifyChangedAsync" />
+                    <div class="form-text">
+                        Use the settings the bus runs at. The port only listens and never transmits, so a wrong setting
+                        cannot disturb the devices; it shows up here as garbled bytes and line errors instead of frames.
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-6">
+            <div class="card h-100">
+                <div class="card-header">Capture</div>
+                <div class="card-body">
+                    <div class="row g-2">
+                        <div class="col-sm-6">
+                            <label class="form-label" for="sniff-timeout">Response timeout (ms)</label>
+                            <input id="sniff-timeout" class="form-control" type="number" min="1" max="@ScanFormModel.MaxResponseTimeoutMs"
+                                   @bind="Model.ResponseTimeoutMs" @bind:after="NotifyChangedAsync" />
+                            @FieldError(nameof(SniffFormModel.ResponseTimeoutMs))
+                        </div>
+                        <div class="col-sm-6">
+                            <label class="form-label" for="sniff-capacity">Log size (entries)</label>
+                            <input id="sniff-capacity" class="form-control" type="number" min="1" max="@SniffOptions.MaxCapacity"
+                                   @bind="Model.Capacity" @bind:after="NotifyChangedAsync" />
+                            @FieldError(nameof(SniffFormModel.Capacity))
+                        </div>
+                    </div>
+                    <div class="form-text">
+                        A request counts as unanswered when the timeout passes without a reply, or as soon as the next
+                        request starts. The master's own timeout cannot be seen on the bus; enter it if you know it.
+                        The log keeps the newest entries and drops older ones, while the statistics keep counting them.
+                    </div>
+                    <div class="form-text">
+                        Frames are told apart by their content and CRC, not by the gaps between them.
+                        @if (Validation.Serial is SerialSettings serial)
+                        {
+                            <span>
+                                A silence of @ScanFormatting.Milliseconds(RtuTiming.DefaultFrameGap(serial)) ms, max(t3.5, 20 ms),
+                                only ends a frame that broke off.
+                            </span>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</fieldset>
+
+@code {
+    [Parameter, EditorRequired]
+    public SniffFormModel Model { get; set; } = default!;
+
+    [Parameter, EditorRequired]
+    public SniffFormValidation Validation { get; set; } = default!;
+
+    [Parameter]
+    public WebSerialPort? SelectedPort { get; set; }
+
+    [Parameter]
+    public EventCallback<WebSerialPort?> SelectedPortChanged { get; set; }
+
+    /// <inheritdoc cref="SerialPortSelector.PreferredPortId"/>
+    [Parameter]
+    public string? PreferredPortId { get; set; }
+
+    [Parameter]
+    public bool Disabled { get; set; }
+
+    /// <summary>Raised after any field changes, so the owner can revalidate.</summary>
+    [Parameter]
+    public EventCallback OnChange { get; set; }
+
+    private Task NotifyChangedAsync() => OnChange.InvokeAsync();
+
+    private RenderFragment FieldError(string field) => __builder =>
+    {
+        if (Validation.ErrorFor(field) is string message)
+        {
+            <div class="text-danger small mt-1">@message</div>
+        }
+    };
+}

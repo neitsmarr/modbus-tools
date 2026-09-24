@@ -1,0 +1,240 @@
+@page "/sniffer"
+@implements IAsyncDisposable
+@inject WebSerialService Serial
+@inject TimeProvider TimeProvider
+@inject BrowserFileDownloader Downloader
+
+<PageTitle>Bus Sniffer</PageTitle>
+
+<h1>Bus Sniffer</h1>
+
+<p>
+    Listen to a Modbus RTU bus and decode what its master asks and its slaves answer. Nothing is sent, so this is safe
+    on a live bus while its own master is polling, which the other tools are not.
+</p>
+
+@if (isSupported is null)
+{
+    <p><em>Checking Web Serial support...</em></p>
+}
+else if (isSupported == false)
+{
+    <div class="alert alert-warning" role="alert">
+        The Web Serial API is not available in this browser. Use a desktop Chromium-based browser
+        (Chrome, Edge or Opera) and open the app over HTTPS or on localhost.
+    </div>
+}
+else
+{
+    <SniffConfigForm Model="model" Validation="validation" Disabled="IsRunning" PreferredPortId="@Port"
+                     @bind-SelectedPort="selectedPort" OnChange="Revalidate" />
+
+    <div class="d-flex flex-wrap align-items-center gap-2 my-3">
+        @if (!IsRunning)
+        {
+            <button type="button" class="btn btn-primary" @onclick="StartAsync" disabled="@(!CanStart)">Start capture</button>
+            @if (session is not null)
+            {
+                <button type="button" class="btn btn-outline-secondary" @onclick="ClearFinished">Clear</button>
+            }
+
+            @if (selectedPort is null)
+            {
+                <span class="text-body-secondary">Select or add a serial port to start.</span>
+            }
+            else if (!validation.IsValid)
+            {
+                <span class="text-danger">Fix the highlighted settings to start.</span>
+            }
+        }
+        else
+        {
+            <button type="button" class="btn btn-outline-danger" @onclick="session!.Stop" disabled="@session.IsStopRequested">Stop</button>
+            <button type="button" class="btn btn-outline-secondary" @onclick="session.Clear" disabled="@session.IsStopRequested">Clear</button>
+            <span class="text-body-secondary">
+                <span class="spinner-grow spinner-grow-sm text-success me-1" aria-hidden="true"></span>
+                Capturing for @ScanFormatting.Duration(session.CaptureTime)
+            </span>
+        }
+    </div>
+
+    @if (session is not null)
+    {
+        @if (session.Outcome == SniffOutcome.Failed && session.Error is not null)
+        {
+            <div class="alert alert-danger" role="alert">
+                Capture failed: @JsErrors.FirstLine(session.Error)
+                The port was released; check the connection and try again. What was received so far is kept below.
+            </div>
+        }
+
+        @if (exportError is not null)
+        {
+            <div class="alert alert-danger" role="alert">@exportError</div>
+        }
+
+        <div class="card">
+            <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+                <span>Statistics</span>
+                <button type="button" class="btn btn-sm btn-outline-primary" @onclick="ExportStatisticsAsync" disabled="@(!CanExport)"
+                        title="The counters and response times per slave, over the whole capture including entries the log has dropped">
+                    Export CSV
+                </button>
+            </div>
+            <div class="card-body">
+                <SniffStatsTable Session="session" />
+            </div>
+        </div>
+
+        <div class="card mt-3">
+            <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+                <span>Log</span>
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-sm btn-outline-primary" @onclick="ExportCsvAsync" disabled="@(!CanExport)">Export CSV</button>
+                    <button type="button" class="btn btn-sm btn-outline-primary" @onclick="ExportCaptureAsync" disabled="@(!CanExport)"
+                            title="The bytes exactly as received, with their times, so the capture can be decoded again later">
+                        Export raw capture
+                    </button>
+                </div>
+            </div>
+            <div class="card-body">
+                <SniffFrameTable Capture="session.Capture" />
+
+                <div class="form-text">
+                    Times are when the browser received each chunk of bytes, not when they were on the wire. USB adapters
+                    pass bytes on in batches (an FTDI adapter waits up to 16 ms by default), so a request and its reply
+                    often arrive together and cannot be timed apart, and every response time includes that delay.
+                    Lowering the adapter's latency timer sharpens them: for FTDI, in the port's advanced settings in the
+                    Windows Device Manager, down to 1 ms.
+                </div>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    // How often the page re-renders while capturing; bytes arrive faster than they need to be drawn.
+    private static readonly TimeSpan RefreshInterval = TimeSpan.FromMilliseconds(150);
+
+    private readonly SniffFormModel model = new();
+    private SniffFormValidation validation = default!;
+    private bool? isSupported;
+    private WebSerialPort? selectedPort;
+    private SniffSession? session;
+    private Task? runTask;
+    private string? exportError;
+
+    /// <summary>Port identifier as produced by the scanner, e.g. "0403:6001#1".</summary>
+    [SupplyParameterFromQuery]
+    public string? Port { get; set; }
+
+    [SupplyParameterFromQuery]
+    public int? Baud { get; set; }
+
+    [SupplyParameterFromQuery]
+    public int? DataBits { get; set; }
+
+    /// <summary>N, E or O.</summary>
+    [SupplyParameterFromQuery]
+    public string? Parity { get; set; }
+
+    [SupplyParameterFromQuery]
+    public int? StopBits { get; set; }
+
+    private bool IsRunning => session is { State: not ScanSessionState.Finished };
+
+    private bool CanStart => !IsRunning && selectedPort is not null && validation.IsValid;
+
+    private bool CanExport => session is not null && session.Capture.Entries.Count > 0;
+
+    protected override void OnInitialized()
+    {
+        model.ApplyQuery(Baud, DataBits, Parity, StopBits);
+        Revalidate();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        isSupported = await Serial.IsSupportedAsync();
+        StateHasChanged();
+    }
+
+    private void Revalidate() => validation = model.Validate();
+
+    private async Task StartAsync()
+    {
+        if (!CanStart || validation.Options is not SniffOptions options)
+        {
+            return;
+        }
+
+        exportError = null;
+        var port = selectedPort!;
+        session = new SniffSession(options, port.DisplayName, TimeProvider);
+        runTask = RunAsync(session, new WebSerialTransport(port, TimeProvider));
+        await runTask;
+    }
+
+    private async Task RunAsync(SniffSession capture, WebSerialTransport transport)
+    {
+        await using (transport)
+        {
+            var run = capture.RunAsync(transport);
+            while (!run.IsCompleted)
+            {
+                await Task.WhenAny(run, Task.Delay(RefreshInterval, TimeProvider));
+                StateHasChanged();
+            }
+
+            await run;
+        }
+    }
+
+    private void ClearFinished()
+    {
+        session = null;
+        exportError = null;
+    }
+
+    private Task ExportStatisticsAsync() => ExportAsync("statistics.csv", "text/csv", SniffReportExporter.ToStatisticsCsv);
+
+    private Task ExportCsvAsync() => ExportAsync("csv", "text/csv", SniffReportExporter.ToCsv);
+
+    private Task ExportCaptureAsync() => ExportAsync("capture.json", "application/json", SniffReportExporter.ToCaptureJson);
+
+    private async Task ExportAsync(string extension, string contentType, Func<SniffReport, string> format)
+    {
+        if (session is null)
+        {
+            return;
+        }
+
+        exportError = null;
+        var report = session.CreateReport();
+        var timestamp = (report.CaptureStartedAt ?? TimeProvider.GetUtcNow()).ToLocalTime();
+        var fileName = $"bus-sniff-{report.Options.Serial.BaudRate}-{timestamp:yyyyMMdd-HHmmss}.{extension}";
+        try
+        {
+            await Downloader.DownloadAsync(fileName, contentType, Encoding.UTF8.GetBytes(format(report)));
+        }
+        catch (JSException ex)
+        {
+            exportError = $"Export failed: {JsErrors.FirstLine(ex)}";
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        // Leaving the page stops the capture; wait for it so the port is released before anything else can reopen it.
+        session?.Stop();
+        if (runTask is not null)
+        {
+            await runTask;
+        }
+    }
+}
