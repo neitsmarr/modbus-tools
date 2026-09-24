@@ -25,14 +25,14 @@
     </dd>
 </dl>
 
-@if (statistics.Slaves.Count == 0)
-{
-    <p class="text-body-secondary small mb-0">No slave has been addressed yet.</p>
-}
-else
-{
-    <div class="table-responsive">
-        <table class="table table-sm table-hover align-middle mb-0 small">
+<div class="slaves border rounded">
+    @if (statistics.Slaves.Count == 0)
+    {
+        <p class="text-body-secondary small p-2 mb-0">No slave has been addressed yet.</p>
+    }
+    else
+    {
+        <table class="table table-sm table-hover align-middle mb-0 small slave-stats">
             <thead>
                 <tr>
                     <th scope="col" class="text-end">Slave</th>
@@ -63,8 +63,8 @@ else
                 }
             </tbody>
         </table>
-    </div>
-}
+    }
+</div>
 
 @code {
     [Parameter, EditorRequired]

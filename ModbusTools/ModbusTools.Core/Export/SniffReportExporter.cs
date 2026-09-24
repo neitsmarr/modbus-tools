@@ -32,6 +32,12 @@ public static class SniffReportExporter
         "response_time_ms", "in_request_chunk", "hex",
     ];
 
+    private static readonly string[] StatisticsCsvColumns =
+    [
+        "slave", "requests", "answered", "exceptions", "no_response", "garbled_replies", "unexpected",
+        "timed_replies", "replies_in_request_chunk", "avg_response_ms", "max_response_ms",
+    ];
+
     /// <summary>
     /// CSV with the capture settings and statistics as leading "# name: value" comment lines, followed by a header row
     /// and one row per kept log entry, oldest first. Frames are space-separated uppercase hex.
@@ -64,6 +70,43 @@ public static class SniffReportExporter
                 FormatMilliseconds(entry.ResponseTime),
                 entry.Request is not null ? (entry.IsInRequestChunk ? "true" : "false") : string.Empty,
                 Hex.Format(entry.Bytes.Span),
+            ];
+            csv.AppendLine(string.Join(',', fields.Select(EscapeCsv)));
+        }
+
+        return csv.ToString();
+    }
+
+    /// <summary>
+    /// CSV with the capture settings and bus totals as leading "# name: value" comment lines, followed by a header row
+    /// and one row per slave, by address. It covers the whole capture, including entries the log has dropped.
+    /// </summary>
+    public static string ToStatisticsCsv(SniffReport report)
+    {
+        ArgumentNullException.ThrowIfNull(report);
+
+        var csv = new StringBuilder();
+        foreach (var (name, value) in DescribeSettings(report))
+        {
+            csv.Append("# ").Append(name).Append(": ").AppendLine(value);
+        }
+
+        csv.AppendLine(string.Join(',', StatisticsCsvColumns));
+        foreach (var slave in report.Capture.Statistics.Slaves)
+        {
+            string[] fields =
+            [
+                Invariant(slave.Address),
+                Invariant(slave.Requests),
+                Invariant(slave.Answered),
+                Invariant(slave.Exceptions),
+                Invariant(slave.NoResponse),
+                Invariant(slave.GarbledReplies),
+                Invariant(slave.Unexpected),
+                Invariant(slave.TimedReplies),
+                Invariant(slave.RepliesInRequestChunk),
+                FormatMilliseconds(slave.AverageResponseTime),
+                FormatMilliseconds(slave.MaxResponseTime),
             ];
             csv.AppendLine(string.Join(',', fields.Select(EscapeCsv)));
         }

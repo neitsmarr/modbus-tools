@@ -68,8 +68,19 @@ else
             </div>
         }
 
+        @if (exportError is not null)
+        {
+            <div class="alert alert-danger" role="alert">@exportError</div>
+        }
+
         <div class="card">
-            <div class="card-header">Statistics</div>
+            <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+                <span>Statistics</span>
+                <button type="button" class="btn btn-sm btn-outline-primary" @onclick="ExportStatisticsAsync" disabled="@(!CanExport)"
+                        title="The counters and response times per slave, over the whole capture including entries the log has dropped">
+                    Export CSV
+                </button>
+            </div>
             <div class="card-body">
                 <SniffStatsTable Session="session" />
             </div>
@@ -87,11 +98,6 @@ else
                 </div>
             </div>
             <div class="card-body">
-                @if (exportError is not null)
-                {
-                    <div class="alert alert-danger" role="alert">@exportError</div>
-                }
-
                 <SniffFrameTable Capture="session.Capture" />
 
                 <div class="form-text">
@@ -194,6 +200,8 @@ else
         session = null;
         exportError = null;
     }
+
+    private Task ExportStatisticsAsync() => ExportAsync("statistics.csv", "text/csv", SniffReportExporter.ToStatisticsCsv);
 
     private Task ExportCsvAsync() => ExportAsync("csv", "text/csv", SniffReportExporter.ToCsv);
 
